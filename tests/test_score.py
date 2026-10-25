@@ -9,6 +9,7 @@ from pipeline import features as F
 from tests.test_arrivals import DAY, START, world  # noqa: F401  (module-scoped fixture)
 
 NOW = START + 100 * 60
+UPCOMING = ["on_time", "late", "early", "scheduled"]
 SMALL = {"n_estimators": 30, "learning_rate": 0.1, "num_leaves": 7, "min_child_samples": 5, "verbose": -1}
 
 
@@ -27,9 +28,10 @@ def trained(world):  # noqa: F811
 def test_board_without_models_shows_official_unaltered(world):  # noqa: F811
     sim = world[0]
     scorer = Scorer(sim.engine)
-    board = scorer.score(NOW)
+    board = scorer.score(NOW).board
     assert len(board)
     assert board["p50_at"].isna().all()
+    board = board[board["status"].isin(UPCOMING)]
     assert board["official_at"].between(NOW - 60, NOW + 3600).all()
     ctx = F.build_context(sim.engine, DAY)
     T = ctx.poll_times[ctx.poll_times <= NOW].max()
@@ -43,7 +45,8 @@ def test_board_with_models(trained):
     sim, a, n = trained
     scorer = Scorer(sim.engine, arrival=a, noshow=n)
     scorer._models_checked_at = float("inf")  # keep the injected models
-    board = scorer.score(NOW)
+    live = scorer.score(NOW)
+    board = live.board[live.board["status"].isin(UPCOMING)]
     assert (board["p10_at"] <= board["p50_at"]).all() and (board["p50_at"] <= board["p90_at"]).all()
     assert (board["p10_at"] >= NOW).all()
     assert board["noshow_prob"].between(0, 1).all()
@@ -53,12 +56,14 @@ def test_board_with_models(trained):
     tu = pd.read_sql("SELECT trip_id, polled_at, trip_rel FROM trip_updates", sim.engine)
     T = tu.loc[tu["polled_at"] <= NOW, "polled_at"].max()
     cancelled = set(tu.loc[(tu["polled_at"] == T) & (tu["trip_rel"] == "CANCELED"), "trip_id"])
-    on_board = board[board["trip_id"].isin(cancelled)]
-    assert (on_board["noshow_prob"] == 1.0).all()
+    assert not board["trip_id"].isin(cancelled).any()
+    on_board = live.board[live.board["trip_id"].isin(cancelled)]
+    assert (on_board["status"] == "cancelled").all() and (on_board["noshow_prob"] == 1.0).all()
 
-    scorer.write(board)
-    live = pd.read_sql("SELECT * FROM live_board", sim.engine)
-    assert len(live) == len(board)
+    scorer.write(live)
+    stored = pd.read_sql("SELECT * FROM live_board", sim.engine)
+    assert len(stored) == len(live.board)
+    assert len(pd.read_sql("SELECT * FROM live_trips", sim.engine)) == len(live.trips)
     logged = pd.read_sql("SELECT * FROM predictions_log", sim.engine)
     assert 0 < len(logged) < len(board)
 
@@ -76,3 +81,72 @@ def test_accuracy_grades_logged_predictions(trained):
     assert overall["n"] > 50
     assert np.isfinite(overall["mae_ours_s"]) and 0 <= overall["coverage"] <= 1
     assert {r["horizon"] for r in rows} - {"all"} <= {"0-5", "5-10", "10-20", "20-40", "40-60"}
+
+
+def test_live_status_departed_cancelled_and_where_the_bus_is(world):  # noqa: F811
+    sim = world[0]
+    scorer = Scorer(sim.engine)
+    ghosts = set(sim.truth(DAY)[1].query("ghost").index)
+    seen: dict[str, int] = {}
+    located = 0
+    keys = ["trip_id", "stop_sequence"]
+    for now in range(START + 30 * 60, START + 150 * 60, 300):
+        live = scorer.score(now)
+        board, trips = live.board, live.trips
+        assert set(board["status"]) <= {*UPCOMING, "departed", "cancelled", "skipped"}
+        for k, v in board["status"].value_counts().items():
+            seen[k] = seen.get(k, 0) + v
+
+        dep = board[board["status"] == "departed"]
+        by_gps = dep[dep["passed_at"].notna()]
+        assert by_gps["passed_at"].between(now - 900, now).all()
+        assert (by_gps["delay_s"] == (by_gps["passed_at"] - by_gps["scheduled_at"]).round()).all()
+        # without GPS, a bus has left a stop when the feed stops predicting it
+        assert (dep.loc[dep["passed_at"].isna(), "scheduled_at"] >= now - 900).all()
+        up = board[board["status"].isin(UPCOMING)]
+        # a stop a bus has left is never also shown as still to come for that bus
+        assert up.merge(dep[keys], on=keys).empty
+        assert (up.loc[up["status"] == "late", "delay_s"] >= 120).all()
+        assert (up.loc[up["status"] == "early", "delay_s"] <= -60).all()
+        assert not up.loc[up["status"] == "scheduled", "has_gps"].any()
+        assert (board.loc[board["status"] == "cancelled", "noshow_prob"] == 1.0).all()
+
+        assert trips["trip_id"].is_unique
+        running = trips[trips["status"] == "running"]
+        # every running bus can be located: by a fresh GPS fix, or by the last stop it passed
+        assert (running["lat"].notna() | running["last_stop_id"].notna()).all()
+        assert (running.loc[running["lat"].notna(), "ping_at"] >= now - 300).all()
+        assert not set(running["trip_id"]) & ghosts
+        located += int(running["lat"].notna().sum())
+        on_road = board[board["vehicle_lat"].notna()]
+        assert (on_road["trip_id"].isin(trips.loc[trips["lat"].notna(), "trip_id"])).all()
+    assert seen.get("departed") and seen.get("cancelled") and seen.get("on_time")
+    assert located
+
+
+def test_diversion_shows_skipped_stops_and_off_route_bus(tmp_path):
+    from common.config import Settings
+    from ingest import static_loader
+    from ingest.poller import Poller
+    from ingest.simulator import Simulator
+    from tests.gtfs_fixture import make_zip
+
+    eng = db.get_engine(f"sqlite:///{tmp_path / 'd.db'}")
+    db.init_db(eng)
+    static_loader.load(eng, make_zip(), agency_ids=["1"])
+    sim = Simulator(eng, routes=["39A"], ghost_rate=0.0, gps_missing_rate=0.0, detour_rate=0.5, seed=5)
+    poller = Poller(eng, Settings(feed_mode="simulated"), simulator=sim, archive=False, keep_routes=None)
+    scorer = Scorer(eng)
+    seen_skipped, seen_off_route = set(), set()
+    for t in range(START, START + 150 * 60, 60):
+        for feed, key in poller.plan_tick():
+            poller.poll_once(feed, key, t=t)
+        if t % 300 == 0:
+            live = scorer.score(t)
+            seen_skipped |= set(live.board.loc[live.board["status"] == "skipped", "trip_id"])
+            seen_off_route |= set(live.trips.loc[live.trips["off_route"].astype(bool), "trip_id"])
+            now_skipping = set(live.board.loc[live.board["status"] == "skipped", "trip_id"])
+            assert (live.trips.loc[live.trips["trip_id"].isin(now_skipping), "status"] == "diverted").all()
+    detoured = set(sim.truth(DAY)[1].query("detour").index)
+    assert seen_skipped and seen_skipped <= detoured
+    assert seen_off_route and seen_off_route <= detoured

@@ -8,7 +8,7 @@ from pipeline import scores
 from tests.gtfs_fixture import make_zip  # noqa: F401
 from tests.test_arrivals import DAY, START, world  # noqa: F401  (module-scoped fixture)
 
-NOW = START + 100 * 60
+NOW = START + 112 * 60  # T8 tracked, T7 running without GPS, T6 cancelled 12 min ago
 
 
 @pytest.fixture(scope="module")
@@ -69,12 +69,31 @@ def test_arrivals_keep_official_unaltered(client, world):  # noqa: F811
     assert board
     import pandas as pd
 
-    live = pd.read_sql("SELECT trip_id, stop_id, official_at FROM live_board", world[0].engine)
+    live = pd.read_sql("SELECT trip_id, stop_id, official_at, status FROM live_board", world[0].engine)
     for r in live.itertuples():
         a = board[(r.trip_id, r.stop_id)]
+        assert a["status"] == r.status
+        if r.status in ("departed", "cancelled", "skipped"):
+            assert a["likely_at"] is None and a["leave_by_at"] is None
+            continue
         assert a["official_at"] == r.official_at
         assert a["likely_at"] == r.official_at  # no model loaded: likely = official
         assert a["leave_by_at"] == r.official_at - 300
+
+
+def test_arrivals_show_live_status(client):
+    rows = []
+    for s in client.get("/v1/stops").json():
+        rows += client.get(f"/v1/stops/{s['stop_id']}/arrivals").json()["arrivals"]
+    status = {r["status"] for r in rows}
+    assert {"departed", "cancelled"} <= status
+    for r in rows:
+        if r["status"] == "departed":
+            assert r["passed_at"] is None or NOW - 900 <= r["passed_at"] <= NOW
+        if r["status"] == "cancelled":
+            assert r["official_at"] is None and r["noshow_risk"] == "cancelled"
+        if r["tracked"]:
+            assert r["position"]["lat"] is not None and r["position"]["ping_at"] >= NOW - 300
 
 
 def test_route_reliability_and_leaderboard(client):
@@ -91,10 +110,30 @@ def test_route_reliability_and_leaderboard(client):
     assert [x["route_short_name"] for x in client.get("/v1/routes").json()] == ["39A"]
 
 
-def test_vehicles_alerts_accuracy_shapes(client):
-    assert client.get("/v1/vehicles").status_code == 200
+def test_vehicles_and_trip_timeline(client):
+    buses = client.get("/v1/vehicles").json()
+    assert buses and all(b["status"] in ("running", "diverted") for b in buses)
+    assert all(b["ping_at"] >= NOW - 300 for b in buses)
+    assert client.get("/v1/vehicles", params={"route": "39a"}).json() == buses
+
+    trip = client.get(f"/v1/trips/{buses[0]['trip_id']}").json()
+    assert trip["status"] == buses[0]["status"] and trip["lat"] == buses[0]["lat"]
+    assert len(trip["shape"]) >= 2 and len(trip["stops"]) == 4
+    states = [s["state"] for s in trip["stops"]]
+    # passed stops come first, then the ones still to come
+    assert states == sorted(states, key=lambda x: x != "passed")
+    assert all(s["passed_at"] for s in trip["stops"] if s["state"] == "passed")
+    assert client.get("/v1/trips/nope").status_code == 404
+
+
+def test_alerts_list_cancelled_trips(client):
     al = client.get("/v1/alerts").json()
-    assert "routes" in al
+    assert al["routes"] and al["routes"][0]["route"] == "39A"
+    assert al["routes"][0]["cancelled"] >= 1
+    assert {t["reason"] for t in al["routes"][0]["trips"]} <= {"cancelled", "diverted", "at_risk", "very_late"}
+
+
+def test_accuracy_shape(client):
     acc = client.get("/v1/accuracy").json()
     assert acc["summary"] is None and acc["daily"] == []
 
@@ -102,5 +141,5 @@ def test_vehicles_alerts_accuracy_shapes(client):
 def test_openapi_docs(client):
     spec = client.get("/openapi.json").json()
     for path in ["/v1/stops", "/v1/stops/{stop}/arrivals", "/v1/routes/{route}/reliability", "/v1/leaderboard",
-                 "/v1/vehicles", "/v1/accuracy", "/healthz"]:  # fmt: skip
+                 "/v1/vehicles", "/v1/trips/{trip_id}", "/v1/accuracy", "/healthz"]:  # fmt: skip
         assert path in spec["paths"]

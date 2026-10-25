@@ -24,7 +24,7 @@ from sqlalchemy import Engine, text
 from api import schemas as S
 from common import db
 from common.schedule import latest_version
-from common.timeutil import local_date, now_epoch
+from common.timeutil import local_date, now_epoch, service_day_reference
 from pipeline.scores import reliability_pct
 
 ATTRIBUTION = (
@@ -35,6 +35,9 @@ ATTRIBUTION = (
 BOARD_STALE_S = 180
 POLL_STALE_S = 300
 MIN_TRIPS_FOR_RANK = 20
+VERY_LATE_S = 600
+RECENT_S = 900  # cancelled and departed buses stay listed this long (ml.status.DEPARTED_SHOW_S)
+UPCOMING = {"on_time", "late", "early", "scheduled"}
 
 
 def create_app(engine: Engine | None = None) -> FastAPI:
@@ -204,44 +207,25 @@ def _routes(app: FastAPI) -> None:  # noqa: C901  (one place to read every endpo
         route: Annotated[str | None, Query(description="only this route (short name)")] = None,
     ) -> dict:
         """Buses due in the next hour: official time unaltered, our likely time and 80% range,
-        and the chance the bus never comes. With `walk_min`, each row gets `leave_by_at`: when
-        to set off to be at the stop by the early edge of the range."""
+        the chance the bus never comes, and its live status (late, cancelled, diverted away
+        from this stop, or already gone) with where the bus is now. Buses that left in the
+        last 15 minutes stay on the list, marked departed. With `walk_min`, each upcoming row
+        gets `leave_by_at`: when to set off to be at the stop by the early edge of the range."""
         s = _find_stop(engine, stop)
         now = now_epoch()
         df = _q(
             engine,
-            "SELECT * FROM live_board WHERE stop_id = :s AND official_at >= :a ORDER BY official_at",
+            "SELECT * FROM live_board WHERE stop_id = :s "
+            "AND (status IN ('departed', 'cancelled', 'skipped') OR COALESCE(official_at, scheduled_at) >= :a)",
             s=s["stop_id"],
             a=now - 60,
         )
         if route:
             df = df[df["route_short_name"].str.upper() == route.upper()]
         made_at = int(df["made_at"].max()) if len(df) else None
-        rows = []
-        for r in _records(df):
-            likely = r["p50_at"] if r["p50_at"] is not None else r["official_at"]
-            row = {
-                "trip_id": r["trip_id"],
-                "route_id": r["route_id"],
-                "route": r["route_short_name"],
-                "headsign": r["headsign"],
-                "scheduled_at": r["scheduled_at"],
-                "official_at": r["official_at"],
-                "official_source": "realtime"
-                if r["official_at"] != r["scheduled_at"] or r["vehicle_id"]
-                else "timetable",
-                "likely_at": likely,
-                "early_at": r["p10_at"],
-                "late_at": r["p90_at"],
-                "noshow_prob": r["noshow_prob"],
-                "noshow_risk": risk_label(r["noshow_prob"]),
-                "tracked": bool(r["has_gps"]),
-                "leave_by_at": None,
-            }
-            if walk_min is not None:
-                edge = r["p10_at"] if r["p10_at"] is not None else r["official_at"]
-                row["leave_by_at"] = int(edge - walk_min * 60)
-            rows.append(row)
+        names = _stops(engine, _version(engine)).set_index("stop_id")["stop_name"]
+        rows = [_arrival(r, names, walk_min) for r in _records(df)]
+        rows.sort(key=lambda r: r["passed_at"] or r["likely_at"] or r["scheduled_at"] or 0)
         _cache(response, 20)
         return {
             "stop": s,
@@ -317,43 +301,104 @@ def _routes(app: FastAPI) -> None:  # noqa: C901  (one place to read every endpo
     def vehicles(
         engine: EngineDep, response: Response, route: Annotated[str | None, Query(description="short name")] = None
     ) -> list[dict]:
-        """Latest position of every bus seen in the last 3 minutes (from our poller's copy)."""
-        now = now_epoch()
-        df = _q(
-            engine,
-            "SELECT vehicle_id, trip_id, route_id, direction_id, lat, lon, bearing, ping_at, polled_at "
-            "FROM vehicle_positions WHERE polled_at >= :a",
-            a=now - 180,
-        )
-        df = df.sort_values(["polled_at", "ping_at"]).drop_duplicates("vehicle_id", keep="last")
-        names = _routes_df(engine, _version(engine)).set_index("route_id")["route_short_name"]
-        df["route"] = df["route_id"].map(names)
+        """Every bus with a GPS fix under 5 minutes old: where it is, how late, and whether
+        it has left its route line."""
+        df = _q(engine, "SELECT * FROM live_trips WHERE lat IS NOT NULL")
+        df = df.rename(columns={"route_short_name": "route"})
         if route:
             df = df[df["route"].str.upper() == route.upper()]
+        df["off_route"] = df["off_route"].fillna(False).astype(bool)
         _cache(response, 20)
-        return _records(df.drop(columns="polled_at"))
+        return _records(df)
+
+    @get("/v1/trips/{trip_id}", response_model=S.Trip, tags=["live"])
+    def trip(trip_id: str, engine: EngineDep, response: Response) -> dict:
+        """One bus's journey: every stop with when it passed, will skip, or is due, where the
+        bus is now and the route line to draw it on."""
+        now = now_epoch()
+        live = _q(engine, "SELECT * FROM live_trips WHERE trip_id = :t ORDER BY service_date DESC", t=trip_id)
+        if live.empty:
+            raise HTTPException(404, f"trip {trip_id!r} is not running or due in the next hour")
+        t = _records(live.head(1))[0]
+        version = latest_version(engine, at=service_day_reference(t["service_date"]) + 12 * 3600) or _version(engine)
+        st = _q(
+            engine,
+            "SELECT st.stop_sequence, st.stop_id, st.arrival_s, s.stop_name, s.stop_lat, s.stop_lon "
+            "FROM gtfs_stop_times st LEFT JOIN gtfs_stops s "
+            "ON s.schedule_version = st.schedule_version AND s.stop_id = st.stop_id "
+            "WHERE st.schedule_version = :v AND st.trip_id = :t ORDER BY st.stop_sequence",
+            v=version,
+            t=trip_id,
+        )
+        board = _q(engine, "SELECT stop_sequence, official_at, p50_at FROM live_board WHERE trip_id = :t", t=trip_id)
+        due = board.set_index("stop_sequence")
+        passed = {int(k): v for k, v in json.loads(t["passed"] or "{}").items()}
+        skipped = set(json.loads(t["skipped"] or "[]"))
+        ref = service_day_reference(t["service_date"])
+        stops = []
+        for r in _records(st):
+            seq = int(r["stop_sequence"])
+            if t["status"] == "cancelled":
+                state = "cancelled"
+            elif seq in passed:
+                state = "passed"
+            elif seq in skipped:
+                state = "skipped"
+            else:
+                state = "upcoming"
+            official = _clean(due.at[seq, "official_at"]) if seq in due.index and state == "upcoming" else None
+            likely = _clean(due.at[seq, "p50_at"]) if seq in due.index and state == "upcoming" else None
+            stops.append({
+                **{k: r[k] for k in ("stop_sequence", "stop_id", "stop_name", "stop_lat", "stop_lon")},
+                "scheduled_at": ref + int(r["arrival_s"]),
+                "state": state,
+                "passed_at": passed.get(seq),
+                "official_at": official,
+                "likely_at": likely if likely is not None else official,
+            })  # fmt: skip
+        shape = _q(
+            engine,
+            "SELECT s.coords FROM gtfs_trips tr JOIN gtfs_shapes s "
+            "ON s.schedule_version = tr.schedule_version AND s.shape_id = tr.shape_id "
+            "WHERE tr.schedule_version = :v AND tr.trip_id = :t",
+            v=version,
+            t=trip_id,
+        )
+        _cache(response, 20)
+        return {
+            **t,
+            "route": t["route_short_name"],
+            "off_route": bool(t["off_route"]),
+            "stale": now - t["made_at"] > BOARD_STALE_S,
+            "stops": stops,
+            "shape": json.loads(shape["coords"].iloc[0]) if len(shape) else [],
+            "attribution": ATTRIBUTION,
+        }
 
     @get("/v1/alerts", response_model=S.Alerts, tags=["live"])
     def alerts(engine: EngineDep, response: Response) -> dict:
-        """Live disruption picture from our own data: trips cancelled in the feed and trips
-        likely not to run in the next hour, grouped by route."""
+        """Live disruption picture from our own data, grouped by route: trips cancelled in
+        the feed, buses on a diversion, trips likely not to run, and buses 10+ minutes late."""
         now = now_epoch()
-        df = _q(
-            engine,
-            "SELECT route_short_name, trip_id, headsign, MIN(scheduled_at) AS first_at, MAX(noshow_prob) AS p "
-            "FROM live_board WHERE noshow_prob >= 0.3 AND official_at >= :a "
-            "GROUP BY route_short_name, trip_id, headsign",
-            a=now,
-        )
+        df = _q(engine, "SELECT * FROM live_trips WHERE status != 'finished'")
+        reason = pd.Series(None, index=df.index, dtype=object)
+        reason[(df["delay_s"] >= VERY_LATE_S) & (df["status"] == "running")] = "very_late"
+        reason[(df["noshow_prob"] >= 0.3) & (df["status"] == "not_started")] = "at_risk"
+        reason[df["status"] == "diverted"] = "diverted"
+        reason[df["status"] == "cancelled"] = "cancelled"
+        df = df.assign(reason=reason).dropna(subset=["reason"])
+        df = df[(df["reason"] != "cancelled") | (df["end_at"] >= now - RECENT_S)]  # as long as the board shows it
         out = []
         for name, g in df.groupby("route_short_name"):
+            n = g["reason"].value_counts()
             out.append({
                 "route": name,
-                "cancelled": int((g["p"] >= 0.999).sum()),
-                "at_risk": int(((g["p"] >= 0.3) & (g["p"] < 0.999)).sum()),
-                "trips": _records(g.sort_values("first_at").rename(columns={"p": "noshow_prob"})),
+                **{k: int(n.get(k, 0)) for k in ("cancelled", "diverted", "at_risk", "very_late")},
+                "trips": _records(g.sort_values("start_at")[
+                    ["trip_id", "headsign", "start_at", "status", "reason", "delay_s", "noshow_prob"]
+                ]),
             })  # fmt: skip
-        out.sort(key=lambda a: -(a["cancelled"] * 2 + a["at_risk"]))
+        out.sort(key=lambda a: -(a["cancelled"] * 2 + a["diverted"] * 2 + a["at_risk"] + a["very_late"]))
         _cache(response, 30)
         return {"now": now, "routes": out, "attribution": ATTRIBUTION}
 
@@ -391,6 +436,49 @@ def _routes(app: FastAPI) -> None:  # noqa: C901  (one place to read every endpo
             }
         _cache(response, 600)
         return {"days": days, "summary": summary, "daily": _records(daily), "models": models}
+
+
+def _arrival(r: dict, stop_names: pd.Series, walk_min: float | None) -> dict:
+    """One live_board row as the rider sees it."""
+    upcoming = r["status"] in UPCOMING
+    likely = (r["p50_at"] if r["p50_at"] is not None else r["official_at"]) if upcoming else None
+    official_source = None
+    if r["official_at"] is not None:
+        official_source = "realtime" if r["official_at"] != r["scheduled_at"] or r["vehicle_id"] else "timetable"
+    last = r["last_stop_id"]
+    row = {
+        "trip_id": r["trip_id"],
+        "route_id": r["route_id"],
+        "route": r["route_short_name"],
+        "headsign": r["headsign"],
+        "status": r["status"],
+        "delay_s": r["delay_s"],
+        "scheduled_at": r["scheduled_at"],
+        "official_at": r["official_at"],
+        "official_source": official_source,
+        "likely_at": likely,
+        "early_at": r["p10_at"] if upcoming else None,
+        "late_at": r["p90_at"] if upcoming else None,
+        "passed_at": r["passed_at"],
+        "noshow_prob": r["noshow_prob"],
+        "noshow_risk": risk_label(r["noshow_prob"]),
+        "tracked": bool(r["has_gps"]) and r["vehicle_lat"] is not None,
+        "vehicle_id": r["vehicle_id"],
+        "position": {
+            "lat": r["vehicle_lat"],
+            "lon": r["vehicle_lon"],
+            "ping_at": r["ping_at"],
+            "last_stop_id": last,
+            "last_stop_name": _clean(stop_names.get(last)) if last else None,
+            "stops_away": r["stops_away"] if upcoming else None,
+            "off_route": bool(r["off_route"]),
+        },
+        "leave_by_at": None,
+    }
+    if walk_min is not None and upcoming:
+        edge = r["p10_at"] if r["p10_at"] is not None else r["official_at"]
+        row["leave_by_at"] = int(edge - walk_min * 60)
+    return row
 
 
 def _natural(s: pd.Series) -> pd.Series:

@@ -26,6 +26,7 @@ from sqlalchemy import (
     Text,
     create_engine,
     event,
+    inspect,
     text,
 )
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -287,8 +288,51 @@ live_board = Table(
     Column("noshow_prob", Float),
     Column("has_gps", Boolean),
     Column("model_version", String(64)),
+    # live status: on_time | late | early | scheduled | cancelled | skipped | departed
+    Column("status", String(16)),
+    Column("delay_s", Integer),  # current lateness: GPS position if fresh, else the feed
+    Column("stops_away", Integer),
+    Column("last_stop_id", String(64)),  # last stop the bus passed
+    Column("vehicle_lat", Float),
+    Column("vehicle_lon", Float),
+    Column("ping_at", BigInteger),
+    Column("passed_at", BigInteger),  # departed rows: when it passed this stop
+    Column("off_route", Boolean),
     Index("ix_lb_stop", "stop_id", "official_at"),
 )
+
+# One row per trip on the road or due within the hour; replaced after every scoring run.
+live_trips = Table(
+    "live_trips",
+    metadata,
+    Column("made_at", BigInteger, nullable=False),
+    Column("service_date", String(8)),
+    Column("trip_id", String(64), nullable=False),
+    Column("route_id", String(64)),
+    Column("route_short_name", String(32)),
+    Column("direction_id", Integer),
+    Column("headsign", Text),
+    Column("vehicle_id", String(64)),
+    Column("status", String(16)),  # not_started | running | diverted | cancelled | finished
+    Column("delay_s", Integer),
+    Column("lat", Float),
+    Column("lon", Float),
+    Column("bearing", Float),
+    Column("ping_at", BigInteger),
+    Column("last_stop_id", String(64)),
+    Column("next_stop_id", String(64)),
+    Column("off_route", Boolean),
+    Column("skipped", Text),  # JSON list of stop_sequence the feed says it will skip
+    Column("passed", Text),  # JSON {stop_sequence: passed_at}
+    Column("start_at", BigInteger),
+    Column("end_at", BigInteger),
+    Column("noshow_prob", Float),
+    Index("ix_lt_trip", "trip_id"),
+    Index("ix_lt_route", "route_short_name"),
+)
+
+# Rebuilt every minute, so a shape change can drop and recreate them instead of migrating.
+EPHEMERAL = ["live_board", "live_trips"]
 
 route_scores_daily = Table(
     "route_scores_daily",
@@ -403,6 +447,12 @@ def get_engine(url: str | None = None) -> Engine:
 
 def init_db(engine: Engine | None = None) -> Engine:
     engine = engine or get_engine()
+    insp = inspect(engine)
+    for name in EPHEMERAL:
+        if insp.has_table(name):
+            have = {c["name"] for c in insp.get_columns(name)}
+            if have != {c.name for c in metadata.tables[name].columns}:
+                metadata.tables[name].drop(engine)
     metadata.create_all(engine)
     if engine.dialect.name == "postgresql":
         _setup_timescale(engine)
