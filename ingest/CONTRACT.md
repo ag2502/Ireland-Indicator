@@ -24,6 +24,7 @@ external calls.
 | `schedule_versions`, `gtfs_*` | `static_loader` | All rows of one version, stamped with `schedule_version`. An unchanged zip is skipped. |
 | static archive | `static_loader` | `<schedule_version>.zip` |
 | `weather_hourly` | `weather` | Upserted by `hour_at`. |
+| `trip_updates`, `vehicle_positions` | `replay` (`bustrust replay-raw`) | The same rows the poller wrote, re-parsed from the raw archive. Each UTC day is replaced in full. `poll_log` and `feed_gaps` are not restored. |
 
 ## Guarantees
 

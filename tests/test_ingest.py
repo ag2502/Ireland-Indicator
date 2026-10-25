@@ -107,6 +107,23 @@ def test_one_key_alternates_feeds_two_keys_poll_both(engine):
     assert p2.plan_tick() == [("trip_updates", 0), ("vehicles", 1)]
 
 
+def test_replay_rebuilds_rows_from_the_raw_archive(engine):
+    from ingest.replay import polled_at, replay_day
+
+    p = _nta_poller(engine, [FakeResp(200, _tu_message()), FakeResp(200, _tu_message())])
+    assert p.poll_once("trip_updates", t=T0) and p.poll_once("trip_updates", t=T0 + 120)
+    with engine.connect() as conn:
+        before = sorted(tuple(r) for r in conn.execute(select(db.trip_updates)).all())
+        conn.execute(db.trip_updates.delete())
+        conn.commit()
+    day = datetime.fromtimestamp(T0, UTC).date()
+    for _ in range(2):  # twice: a replay replaces the day, never duplicates it
+        assert replay_day(engine, p.settings.raw_archive, day, {"R1"}) == {"trip_updates": 4}
+    with engine.connect() as conn:
+        assert sorted(tuple(r) for r in conn.execute(select(db.trip_updates)).all()) == before
+    assert polled_at("vehicles/2026/11/02/073000.pb.gz") == T0
+
+
 def test_bad_payload_does_not_crash(engine):
     p = _nta_poller(engine, [FakeResp(200, b"\xff\x00garbage")])
     assert not p.poll_once("trip_updates", t=T0)

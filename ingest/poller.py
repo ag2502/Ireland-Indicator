@@ -27,6 +27,13 @@ log = logging.getLogger(__name__)
 MAX_BACKOFF_S = 15 * 60
 
 
+def operator_routes(engine: Engine) -> set[str] | None:
+    """Route ids in the loaded schedule (our operators only); None keeps every route."""
+    with engine.connect() as conn:
+        ids = conn.execute(select(db.gtfs_routes.c.route_id).distinct()).scalars().all()
+    return set(ids) or None
+
+
 @dataclass
 class FeedState:
     last_ok_at: int | None = None
@@ -47,9 +54,7 @@ class Poller:
 
     def __post_init__(self) -> None:
         if self.keep_routes is None:
-            with self.engine.connect() as conn:
-                ids = conn.execute(select(db.gtfs_routes.c.route_id).distinct()).scalars().all()
-            self.keep_routes = set(ids) or None  # store only our operators' routes
+            self.keep_routes = operator_routes(self.engine)
 
     # ---------------------------------------------------------------- one call
     def fetch(self, feed: str, key_index: int, t: int) -> tuple[int, bytes]:
