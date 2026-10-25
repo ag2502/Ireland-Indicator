@@ -616,7 +616,12 @@ a.plate:active {
 
 .tile-soon {
   grid-column: span 3;
-  min-height: 84px;
+  min-height: 68px;
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 12px;
+  padding: 12px 16px;
   background: repeating-linear-gradient(-45deg, var(--track) 0 10px, transparent 10px 20px), var(--paper);
   color: var(--muted);
   outline: 2px dashed var(--muted);

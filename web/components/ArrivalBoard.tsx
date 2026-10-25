@@ -6,7 +6,7 @@ import { countdown, hhmm, minsUntil, noShowLine, statusLine } from "@/lib/format
 import * as Icon from "./icons";
 
 const HORIZON_MIN = 60;
-const TICKS = [0, 5, 10, 20, 30, 45, 60];
+const TICKS = [0, 5, 10, 20, 30, 60];
 
 /** Square-root minute scale: the next 15 minutes get half the strip, where decisions are made. */
 function x(epoch: number, now: number): number {

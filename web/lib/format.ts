@@ -67,6 +67,8 @@ export function statusLine(a: Arrival, now: number): string {
       if (a.position.stops_away != null && a.tracked) {
         const n = a.position.stops_away;
         parts.push(n === 0 ? "at the stop before" : n === 1 ? "1 stop away" : `${n} stops away`);
+      } else if (!a.tracked) {
+        parts.push("going by the official feed, no GPS on this bus");
       }
       if (a.position.off_route) parts.push("off its usual route");
       return parts.join(", ");

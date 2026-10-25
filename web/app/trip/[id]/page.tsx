@@ -2,7 +2,7 @@
 
 import type { GeoJSONSource, Map as MlMap } from "maplibre-gl";
 import Link from "next/link";
-import { Fragment, use, useCallback, useEffect, useRef } from "react";
+import { Fragment, use, useCallback, useEffect, useRef, useState } from "react";
 import { Attribution, DataNotices, Head, Problem, Skeleton } from "@/components/chrome";
 import * as Icon from "@/components/icons";
 import { MapView, token } from "@/components/MapView";
@@ -100,41 +100,57 @@ function TripSummary({ t, now }: { t: Trip; now: number }) {
 function Journey({ t, now }: { t: Trip; now: number }) {
   const lastPassed = t.stops.reduce((i, s, k) => (s.state === "passed" ? k : i), -1);
   const onRoad = t.status === "running" || t.status === "diverted";
+  // where the bus is matters most: fold all but the last two stops behind it
+  const [showAll, setShowAll] = useState(false);
+  const hidden = showAll ? 0 : Math.max(0, lastPassed - 1);
   return (
-    <ol className="journey">
-      {t.stops.map((s, k) => (
-        <Fragment key={s.stop_sequence}>
-          <li className={`is-${s.state}`}>
-            <span className="dot" aria-hidden="true" />
-            <Link className="stop-name" href={`/stop/${encodeURIComponent(s.stop_id)}`}>
-              {s.stop_name ?? s.stop_id}
-            </Link>
-            <span className="t small">
-              {s.state === "passed" && (s.passed_at ? `passed ${hhmm(s.passed_at)}` : "passed")}
-              {s.state === "skipped" && <span className="badge is-stop">Not stopping</span>}
-              {s.state === "cancelled" && <s>{hhmm(s.scheduled_at)}</s>}
-              {s.state === "upcoming" &&
-                (s.likely_at ? (
-                  <>
-                    <b>{countdown(s.likely_at, now)}</b> {hhmm(s.likely_at)}
-                  </>
-                ) : (
-                  <span className="muted">{hhmm(s.scheduled_at)} timetable</span>
-                ))}
-            </span>
-          </li>
-          {onRoad && k === lastPassed && lastPassed < t.stops.length - 1 && (
-            <li className="is-bus" aria-label="The bus is here">
-              <span className="dot" aria-hidden="true" />
-              <span className="stop-name">
-                <Icon.Bus width={18} height={18} style={{ verticalAlign: -3, marginRight: 6 }} />
-                Bus is here{t.delay_s != null ? `, ${lateness(t.delay_s)}` : ""}
-              </span>
-            </li>
-          )}
-        </Fragment>
-      ))}
-    </ol>
+    <>
+      {hidden > 0 && (
+        <button className="btn" style={{ width: "100%", marginBottom: 8 }} onClick={() => setShowAll(true)}>
+          Show {hidden} earlier {hidden === 1 ? "stop" : "stops"} it has passed
+        </button>
+      )}
+      <ol className="journey">
+        {t.stops.map((s, k) =>
+          k < hidden ? null : (
+            <Fragment key={s.stop_sequence}>
+              <li className={`is-${s.state}`}>
+                <span className="dot" aria-hidden="true" />
+                <Link className="stop-name" href={`/stop/${encodeURIComponent(s.stop_id)}`}>
+                  {s.stop_name ?? s.stop_id}
+                </Link>
+                <span className="t small">
+                  {s.state === "passed" && (s.passed_at ? `passed ${hhmm(s.passed_at)}` : "passed")}
+                  {s.state === "skipped" && <span className="badge is-stop">Not stopping</span>}
+                  {s.state === "cancelled" && <s>{hhmm(s.scheduled_at)}</s>}
+                  {s.state === "upcoming" &&
+                    (s.likely_at ? (
+                      <>
+                        <b>{countdown(s.likely_at, now)}</b> {hhmm(s.likely_at)}
+                      </>
+                    ) : s.scheduled_at <= now ? (
+                      <>
+                        <b>Due</b> <span className="muted">timetable {hhmm(s.scheduled_at)}</span>
+                      </>
+                    ) : (
+                      <span className="muted">{hhmm(s.scheduled_at)} timetable</span>
+                    ))}
+                </span>
+              </li>
+              {onRoad && k === lastPassed && lastPassed < t.stops.length - 1 && (
+                <li className="is-bus" aria-label="The bus is here">
+                  <span className="dot" aria-hidden="true" />
+                  <span className="stop-name">
+                    <Icon.Bus width={18} height={18} style={{ verticalAlign: -3, marginRight: 6 }} />
+                    Bus is here{t.delay_s != null ? `, ${lateness(t.delay_s)}` : ""}
+                  </span>
+                </li>
+              )}
+            </Fragment>
+          ),
+        )}
+      </ol>
+    </>
   );
 }
 

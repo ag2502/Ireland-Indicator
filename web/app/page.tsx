@@ -66,7 +66,7 @@ export default function Home() {
         ].map(({ name, icon: Ic }) => (
           <div key={name} className="plate tile tile-soon" aria-disabled="true">
             <Ic />
-            <span>
+            <span style={{ lineHeight: 1.1 }}>
               <span className="plate-title">{name}</span>
               <br />
               <small>Coming soon</small>
