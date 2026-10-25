@@ -10,7 +10,7 @@ reads and writes; keep it current when a table or file shape changes.
 - **Timestamps are UTC** everywhere in storage (`datetime` with tzinfo=UTC, or epoch
   seconds). Convert to Europe/Dublin only for display and for calendar features.
 - **GTFS times past 24:00** (e.g. `25:10:00`) belong to the previous service day. Use
-  `common.timeutil.gtfs_time_to_utc`, never hand-roll it.
+  `common.timeutil.gtfs_time_to_epoch`, never hand-roll it.
 - **Static schedule is versioned.** Every `gtfs_*` row carries `schedule_version`;
   realtime data joins only to the version active on its service date.
 - **No leakage.** Features are built with as-of joins on poll time. Splits are by time,
