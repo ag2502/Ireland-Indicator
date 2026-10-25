@@ -450,6 +450,10 @@ def insert_rows(
     rows = list(rows)
     if not rows:
         return 0
+    # executemany needs every row to carry the same keys; absent columns become NULL
+    cols = {k for r in rows for k in r}
+    if any(len(r) != len(cols) for r in rows):
+        rows = [{c: r.get(c) for c in cols} for r in rows]
     if ignore_conflicts:
         ins = pg_insert if engine.dialect.name == "postgresql" else sqlite_insert
         stmt: Any = ins(table).on_conflict_do_nothing()
