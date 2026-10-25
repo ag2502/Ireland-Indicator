@@ -16,7 +16,7 @@ import gzip
 import logging
 from datetime import UTC, date, datetime, timedelta
 
-from sqlalchemy import Engine, delete
+from sqlalchemy import Engine, delete, func, select
 
 from common import db, storage
 from common.config import get_settings
@@ -33,7 +33,9 @@ def polled_at(key: str) -> int:
     return int(datetime(int(y), int(m), int(d), int(hms[:2]), int(hms[2:4]), int(hms[4:6]), tzinfo=UTC).timestamp())
 
 
-def replay_day(engine: Engine, base: str, day: date, keep_routes: set[str] | None) -> dict[str, int]:
+def replay_day(
+    engine: Engine, base: str, day: date, keep_routes: set[str] | None, force: bool = False
+) -> dict[str, int]:
     start = int(datetime(day.year, day.month, day.day, tzinfo=UTC).timestamp())
     counts: dict[str, int] = {}
     for feed in feeds.FEEDS:
@@ -41,8 +43,15 @@ def replay_day(engine: Engine, base: str, day: date, keep_routes: set[str] | Non
         if not keys:
             continue
         table = db.trip_updates if feed == "trip_updates" else db.vehicle_positions
+        in_day = (table.c.polled_at >= start, table.c.polled_at < start + 86400)
         with engine.begin() as conn:
-            conn.execute(delete(table).where(table.c.polled_at >= start, table.c.polled_at < start + 86400))
+            have = conn.execute(select(func.count(func.distinct(table.c.polled_at))).where(*in_day)).scalar() or 0
+            if have > len(keys) and not force:
+                log.warning(
+                    "%s %s: %d polls stored but %d archived; skipped (--force to replace)", day, feed, have, len(keys)
+                )
+                continue
+            conn.execute(delete(table).where(*in_day))
         n = 0
         for key in keys:
             rows, _, _ = feeds.parse(feed, gzip.decompress(storage.get_bytes(base, key)), polled_at(key), keep_routes)
@@ -53,15 +62,16 @@ def replay_day(engine: Engine, base: str, day: date, keep_routes: set[str] | Non
 
 
 def run(argv: list[str] | None = None) -> int:
-    """CLI: bustrust replay-raw --start YYYY-MM-DD [--end YYYY-MM-DD]   (UTC days, inclusive)"""
+    """CLI: bustrust replay-raw --start YYYY-MM-DD [--end YYYY-MM-DD] [--force]   (UTC days, inclusive)"""
     p = argparse.ArgumentParser(prog="bustrust replay-raw")
     p.add_argument("--start", required=True, type=date.fromisoformat)
     p.add_argument("--end", type=date.fromisoformat, help="default: same as --start")
+    p.add_argument("--force", action="store_true", help="replace days that hold polls the archive lacks")
     args = p.parse_args(argv)
     engine = db.init_db()
     keep = operator_routes(engine)
     day, end = args.start, args.end or args.start
     while day <= end:
-        replay_day(engine, get_settings().raw_archive, day, keep)
+        replay_day(engine, get_settings().raw_archive, day, keep, args.force)
         day += timedelta(days=1)
     return 0

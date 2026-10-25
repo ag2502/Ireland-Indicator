@@ -123,6 +123,11 @@ def test_replay_rebuilds_rows_from_the_raw_archive(engine):
         assert sorted(tuple(r) for r in conn.execute(select(db.trip_updates)).all()) == before
     assert polled_at("vehicles/2026/11/02/073000.pb.gz") == T0
 
+    # a poll that never reached the archive: replay must not silently drop it
+    db.insert_rows(engine, db.trip_updates, [{"polled_at": T0 + 60, "trip_id": "B"}])
+    assert replay_day(engine, p.settings.raw_archive, day, {"R1"}) == {}
+    assert replay_day(engine, p.settings.raw_archive, day, {"R1"}, force=True) == {"trip_updates": 4}
+
 
 def test_bad_payload_does_not_crash(engine):
     p = _nta_poller(engine, [FakeResp(200, b"\xff\x00garbage")])
