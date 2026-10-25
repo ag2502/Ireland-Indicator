@@ -9,6 +9,8 @@ tests have ground truth. For each service day it draws a hidden "true world":
   route, day (some days are rainy) and noise, so lateness grows along the trip at peak;
 * a few percent of trips are ghosts: they never run. Some are cancelled in the feed, most
   are not, so they count down and never arrive (the NTA's own definition).
+* a couple of percent are diverted: two consecutive stops are marked SKIPPED in the feed
+  from ten minutes before departure, and the bus's GPS leaves the route line around them.
 
 The "official" feed behaves like a typical AVL system: it reports the delay observed at
 the last stop passed (a minute or two stale) and propagates it unchanged downstream. That
@@ -68,12 +70,14 @@ class Simulator:
         seed: int = 7,
         ghost_rate: float = 0.02,
         gps_missing_rate: float = 0.03,
+        detour_rate: float = 0.02,
     ):
         self.engine = engine
         self.route_names = routes or DEFAULT_ROUTES
         self.seed = seed
         self.ghost_rate = ghost_rate
         self.gps_missing_rate = gps_missing_rate
+        self.detour_rate = detour_rate
         self._days: dict[str, DayWorld] = {}
         self._schedules: dict[str, Schedule] = {}
 
@@ -169,6 +173,17 @@ class Simulator:
         # arrivals must be non-decreasing along a trip
         true_at = pd.Series(true_at).groupby(trip_idx).cummax().to_numpy()
         stops = st.assign(true_at=true_at.round(), true_delay=(true_at - st["scheduled_at"]).round())
+        # diversions: drawn from their own stream so the rest of the world is unchanged
+        drng = np.random.default_rng(_seed(self.seed, service_date, "detour"))
+        pos = stops.groupby("trip_id").cumcount().to_numpy()
+        n_stops = stops.groupby("trip_id")["stop_sequence"].transform("size").to_numpy()
+        detoured = (drng.random(n) < self.detour_rate) & ~trips["ghost"].to_numpy()
+        first = np.floor(drng.uniform(0.2, 0.7, n) * 1000).astype(int)  # fraction of the route, x1000
+        span = np.where(n_stops >= 6, 2, 1)  # never the first or last stop
+        k = np.clip(first[trip_idx] * n_stops // 1000, 1, n_stops - 1 - span)
+        skipped = detoured[trip_idx] & (pos >= k) & (pos < k + span) & (n_stops >= 4)
+        stops = stops.assign(skipped=skipped)
+        trips = trips.assign(detour=detoured)
         world = DayWorld(service_date, stops, trips, rainy=rainy)
         world.by_trip = {t: g for t, g in stops.groupby("trip_id", sort=False)}
         self._days[service_date] = world
@@ -247,11 +262,23 @@ class Simulator:
                         visible = max(0.0, min(1.0, (600 - (tr.start_at - t)) / 600))
                         delay = int(tr.start_delay * visible)
                         row = g.iloc[0]
-                stu = tu.stop_time_update.add()
-                stu.stop_sequence = int(row.stop_sequence)
-                stu.stop_id = row.stop_id
-                stu.arrival.delay = delay
-                stu.departure.delay = delay
+                skip = g[g["skipped"] & (g["stop_sequence"] >= row.stop_sequence)] if tr.detour else g.iloc[0:0]
+                if len(skip) and t < tr.start_at - 600:
+                    skip = skip.iloc[0:0]  # the diversion is announced ten minutes before departure
+                if row.stop_sequence in set(skip["stop_sequence"]):
+                    later = g[(g["stop_sequence"] > row.stop_sequence) & ~g["skipped"]]
+                    row = later.iloc[0] if len(later) else row
+                updates = [(int(r.stop_sequence), r.stop_id, None) for r in skip.itertuples()]
+                updates.append((int(row.stop_sequence), row.stop_id, delay))
+                for seq, stop_id, d in sorted(set(updates), key=lambda u: u[0]):
+                    stu = tu.stop_time_update.add()
+                    stu.stop_sequence = seq
+                    stu.stop_id = stop_id
+                    if d is None:
+                        stu.schedule_relationship = rt.TripUpdate.StopTimeUpdate.SKIPPED
+                    else:
+                        stu.arrival.delay = d
+                        stu.departure.delay = d
         return msg.SerializeToString()
 
     def vehicles(self, t: int) -> bytes:
@@ -271,6 +298,12 @@ class Simulator:
                 if line is None:
                     continue
                 lon, lat = geo.point_at(line, d)
+                sk = g["skipped"].to_numpy()
+                if tr.detour and sk.any():
+                    i0, i1 = int(np.argmax(sk)), len(sk) - int(np.argmax(sk[::-1]))
+                    lo, hi = dist[max(i0 - 1, 0)], dist[min(i1, len(sk) - 1)]
+                    if lo < d < hi:
+                        lat += 0.0028  # ~300 m off the route line around the skipped stops
                 lat += rng.normal(0, 6e-5)  # ~7 m GPS noise
                 lon += rng.normal(0, 1e-4)
                 ent = msg.entity.add()

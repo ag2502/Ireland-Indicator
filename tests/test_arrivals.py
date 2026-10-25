@@ -134,3 +134,26 @@ def test_propagate_skipped_stop_keeps_upstream_delay():
     assert out.loc[4, "official_at"] == 390  # but the delay carries on past it
     nd = tu.assign(stop_rel=["SCHEDULED", "NO_DATA"])
     assert set(propagate(nd, sched)["stop_sequence"]) == {2}  # NO_DATA blocks downstream
+
+
+def test_simulated_diversions_skip_stops_and_leave_the_route(tmp_path):
+    from common import db
+    from common.config import Settings
+
+    eng = db.get_engine(f"sqlite:///{tmp_path / 'd.db'}")
+    db.init_db(eng)
+    static_loader.load(eng, make_zip(), agency_ids=["1"])
+    sim = Simulator(eng, routes=["39A"], ghost_rate=0.0, gps_missing_rate=0.0, detour_rate=0.5, seed=5)
+    poller = Poller(eng, Settings(feed_mode="simulated"), simulator=sim, archive=False, keep_routes=None)
+    for t in range(START, END, 60):
+        for feed, key in poller.plan_tick():
+            poller.poll_once(feed, key, t=t)
+    stops, trips = sim.truth(DAY)
+    assert trips["detour"].any()
+    tu = pd.read_sql("SELECT trip_id, stop_sequence, stop_rel FROM trip_updates", eng)
+    skipped = tu[tu["stop_rel"] == "SKIPPED"][["trip_id", "stop_sequence"]].drop_duplicates()
+    truth_skip = stops[stops["skipped"]][["trip_id", "stop_sequence"]]
+    assert len(skipped) and skipped.merge(truth_skip).shape[0] == len(skipped)
+    arrivals, _ = arr.build_day(eng, DAY, now=END + 7200)
+    labelled = arrivals.merge(skipped.astype({"stop_sequence": "int64"}), on=["trip_id", "stop_sequence"])
+    assert labelled.empty
