@@ -29,17 +29,29 @@ log = logging.getLogger(__name__)
 
 COVERAGE_BAND = (0.78, 0.82)
 REGISTRY = "registry.json"
+MAX_ROWS_PER_DAY = {"arrival": 250_000, "noshow": None}
 
 
 # ---------------------------------------------------------------- data
-def load_examples(kind: str, parquet_dir: str | None = None, since: str | None = None) -> pd.DataFrame:
+def load_examples(
+    kind: str, parquet_dir: str | None = None, since: str | None = None, max_rows_per_day: int | None = None
+) -> pd.DataFrame:
+    """All example days of one kind. `max_rows_per_day` takes a random sample of each day:
+    consecutive polls of one bus are near-duplicates, so this costs little accuracy and
+    keeps memory flat as history grows."""
     base = Path(parquet_dir or get_settings().parquet_dir) / kind
     files = sorted(base.glob("*.parquet"))
     if since:
         files = [f for f in files if f.stem >= since]
     if not files:
         return pd.DataFrame()
-    return pd.concat([pd.read_parquet(f) for f in files], ignore_index=True)
+    frames = []
+    for f in files:
+        df = pd.read_parquet(f)
+        if max_rows_per_day and len(df) > max_rows_per_day:
+            df = df.sample(max_rows_per_day, random_state=0)
+        frames.append(df)
+    return pd.concat(frames, ignore_index=True)
 
 
 def split_days(days: list[str], test_days: int = 7, cal_days: int = 2, min_train: int = 3) -> tuple[list, list, list]:
@@ -195,7 +207,7 @@ def run(argv: list[str] | None = None) -> int:
     reports = {}
     model: ArrivalModel | NoShowModel
     for kind in ["arrival", "noshow"] if args.kind == "both" else [args.kind]:
-        ex = load_examples(kind)
+        ex = load_examples(kind, max_rows_per_day=MAX_ROWS_PER_DAY[kind])
         if ex.empty:
             log.error("%s: no examples; run `bustrust features --days N` first", kind)
             continue
