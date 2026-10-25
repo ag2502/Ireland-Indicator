@@ -57,7 +57,8 @@ services:
 
   jobs:
     <<: *python
-    command: ["supercronic", "-passthrough-logs", "/etc/bustrust.crontab"]
+    # absolute path: as PID 1 supercronic re-execs argv[0] without a PATH lookup
+    command: ["/usr/local/bin/supercronic", "-passthrough-logs", "/etc/bustrust.crontab"]
     environment:
       BT_DATABASE_URL: postgresql+psycopg://bustrust:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@db:5432/bustrust
       TZ: Europe/Dublin

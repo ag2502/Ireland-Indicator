@@ -61,6 +61,6 @@ jobs:
       - name: "Image: LightGBM and the API import"
         run: docker run --rm bustrust-python python -c "import lightgbm, api.main"
       - name: "Image: crontab parses"
-        run: docker run --rm bustrust-python supercronic -test /etc/bustrust.crontab
+        run: docker run --rm bustrust-python /usr/local/bin/supercronic -test /etc/bustrust.crontab
       - name: Validate the compose file
         run: POSTGRES_PASSWORD=ci docker compose -f infra/docker-compose.yml config --quiet
