@@ -23,6 +23,7 @@ from sqlalchemy import Engine, text
 
 from api import schemas as S
 from common import db
+from common.config import get_settings
 from common.schedule import latest_version
 from common.timeutil import local_date, now_epoch, service_day_reference
 from pipeline.scores import reliability_pct
@@ -163,6 +164,7 @@ def _routes(app: FastAPI) -> None:  # noqa: C901  (one place to read every endpo
             "board_made_at": board_at,
             "model_version": _clean(board["mv"].iloc[0]) if len(board) else None,
             "schedule_version": latest_version(engine),
+            "feed_mode": get_settings().feed_mode,
         }
 
     @get("/v1/stops", response_model=list[S.Stop], tags=["stops"])

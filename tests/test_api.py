@@ -39,6 +39,7 @@ def test_healthz(client):
     body = r.json()
     assert body["status"] == "ok"
     assert body["schedule_version"]
+    assert body["feed_mode"] in ("nta", "simulated")
 
 
 def test_stops_list_and_search(client):

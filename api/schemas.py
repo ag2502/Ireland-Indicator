@@ -15,6 +15,7 @@ class Health(BaseModel):
     board_made_at: int | None
     model_version: str | None
     schedule_version: str | None
+    feed_mode: str = Field(description="nta, or simulated: then every number on the site is from the simulator")
 
 
 class Stop(BaseModel):
