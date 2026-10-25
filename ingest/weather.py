@@ -38,7 +38,7 @@ def _rows(payload: dict, source: str) -> list[dict]:
 
 def fetch_recent(client: httpx.Client) -> list[dict]:
     s = get_settings()
-    params = {
+    params: dict[str, str | float | int] = {
         "latitude": s.latitude,
         "longitude": s.longitude,
         "hourly": HOURLY,
@@ -54,7 +54,7 @@ def fetch_recent(client: httpx.Client) -> list[dict]:
 
 def fetch_archive(client: httpx.Client, start: date, end: date) -> list[dict]:
     s = get_settings()
-    params = {
+    params: dict[str, str | float | int] = {
         "latitude": s.latitude,
         "longitude": s.longitude,
         "hourly": HOURLY,

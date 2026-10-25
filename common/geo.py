@@ -15,7 +15,7 @@ def to_itm(lon: float | np.ndarray, lat: float | np.ndarray) -> tuple:
     return _TO_ITM.transform(lon, lat)
 
 
-def shape_line(coords_lonlat: Sequence[Sequence[float]]) -> LineString:
+def shape_line(coords_lonlat: Sequence[Sequence[float]] | np.ndarray) -> LineString:
     arr = np.asarray(coords_lonlat, dtype=float)
     x, y = to_itm(arr[:, 0], arr[:, 1])
     return LineString(np.column_stack([x, y]))

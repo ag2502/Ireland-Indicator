@@ -89,11 +89,11 @@ class Schedule:
             trips = pd.concat(frames, ignore_index=True)
         else:
             trips = all_trips.assign(service_date=None)
-        sids = sorted(set(trips["service_id"]))
-        if dates and sids:
+        service_ids = sorted(set(trips["service_id"]))
+        if dates and service_ids:
             # filter in SQL via the trip join; service_ids are few, trip_ids are many
-            placeholders = ", ".join(f":s{i}" for i in range(len(sids)))
-            params = {"v": version, **{f"s{i}": s for i, s in enumerate(sids)}}
+            placeholders = ", ".join(f":s{i}" for i in range(len(service_ids)))
+            params = {"v": version, **{f"s{i}": s for i, s in enumerate(service_ids)}}
             st = pd.read_sql(
                 text(
                     "SELECT st.trip_id, st.stop_sequence, st.stop_id, st.arrival_s, st.departure_s, st.dist_m "
