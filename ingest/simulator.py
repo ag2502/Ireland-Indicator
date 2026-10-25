@@ -139,6 +139,10 @@ class Simulator:
         ghost = rng.random(n) < ghost_p
         cancelled = ghost & (rng.random(n) < 0.3)
         cancel_lead = rng.uniform(60, 1500, n)  # seconds before scheduled start
+        # vehicles show in the feed from 25 min before to 2 min after departure; a quarter of
+        # ghosts get one too (assigned, then never ran), so "has a vehicle" is a hint, not proof
+        assign_lead = rng.uniform(-120, 1500, n)
+        ghost_shows_vehicle = ghost & (rng.random(n) < 0.25)
         trips = trips.assign(
             ghost=ghost,
             cancelled=cancelled,
@@ -147,6 +151,7 @@ class Simulator:
             vehicle_id=[f"V{_seed(service_date, b) % 9000 + 1000}" for b in trips["block_id"]],
             pain=pain,
             peak=peak,
+            assign_at=np.where(~ghost | ghost_shows_vehicle, trips["start_at"] - assign_lead, np.inf),
         )
 
         # segment run times: congestion factor x scheduled time, plus dwell noise
@@ -221,6 +226,8 @@ class Simulator:
                 if tr.cancelled and t >= tr.cancel_at:
                     tu.trip.schedule_relationship = rt.TripDescriptor.CANCELED
                     continue
+                if t >= tr.assign_at:
+                    tu.vehicle.id = tr.vehicle_id
                 if tr.ghost:
                     if t > tr.end_at:
                         msg.entity.pop()
@@ -232,7 +239,6 @@ class Simulator:
                         continue
                     row, delay = nxt.iloc[0], 0
                 else:
-                    tu.vehicle.id = tr.vehicle_id
                     if len(passed):
                         delay = int(passed["true_delay"].iloc[-1])
                         row = g.iloc[len(passed)]

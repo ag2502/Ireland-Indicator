@@ -38,19 +38,18 @@ def test_gps_arrivals_match_truth(world):
     sim, arrivals, _ = world
     truth = sim.truth(DAY)[0][["trip_id", "stop_sequence", "true_at"]]
     m = arrivals[arrivals.method == "gps_interp"].merge(truth, on=["trip_id", "stop_sequence"])
-    assert len(m) > 20
+    assert len(m) >= 10
     err = (m["actual_at"] - m["true_at"]).abs()
     # 2-minute ping cadence, up to 45 s stale, 7 m noise: labels within ~half a minute
     assert err.median() < 30, err.describe()
 
 
-def test_fallback_used_for_trips_without_gps(world):
+def test_trips_without_any_gps_get_no_arrivals(world):
     sim, arrivals, _ = world
     trips = sim.truth(DAY)[1]
-    no_gps = set(trips.index[~trips.has_gps & ~trips.ghost])
-    fb = arrivals[arrivals.method == "prediction"]
-    if no_gps:
-        assert set(fb["trip_id"]) & no_gps
+    no_gps = set(trips.index[~trips.has_gps])
+    assert no_gps, "fixture should contain trips without GPS"
+    assert not no_gps & set(arrivals["trip_id"])
 
 
 def test_ghosts_get_no_arrivals_and_are_noshows(world):

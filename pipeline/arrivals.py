@@ -5,8 +5,8 @@ The feeds give predictions and positions, not arrivals, so we build the label:
 1. Project each GPS ping onto its trip's route shape (distance travelled), searching only
    a window ahead of the previous ping so loops and out-and-back routes stay correct.
 2. Interpolate the moment the bus crossed each stop's distance along the shape.
-3. Where pings are missing, fall back to the last official prediction before the stop
-   dropped out of the trip update, but only for trips that had a vehicle assigned.
+3. Where pings are missing on a trip that ran (has some GPS), fall back to the last official
+   prediction before the stop dropped out of the trip update.
 4. Record which method produced each arrival and the gap between bracketing pings.
 
 Trip outcomes: a trip is a no-show if it was never seen with GPS in its window or was
@@ -160,7 +160,8 @@ def build_day(
 
     # fallback: last official prediction before the stop left the board
     off = propagate(tu, se)
-    off = off[off["vehicle_id"].notna()]
+    # only for trips that demonstrably ran (some GPS), so ghosts never get schedule-shaped arrivals
+    off = off[off["vehicle_id"].notna() & off["trip_id"].isin(set(vp["trip_id"]))]
     last = off.sort_values("polled_at").drop_duplicates(["trip_id", "stop_sequence"], keep="last")
     # only trust it if the stop dropped off while the trip kept reporting (i.e. it was passed)
     trip_last_poll = tu.groupby("trip_id")["polled_at"].max()
