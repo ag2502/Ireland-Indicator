@@ -22,6 +22,7 @@ COMMANDS: dict[str, tuple[str, str, str]] = {
     "scores": ("pipeline.scores", "run", "route scores, heatmap and slow segments"),
     "checks": ("pipeline.checks", "run", "daily data-quality checks (exit 1 on failure)"),
     "stopwatch": ("pipeline.stopwatch", "run", "compare hand-timed arrivals with reconstructed labels"),
+    "train": ("ml.train", "run", "train, evaluate and promote the arrival-range and no-show models"),
     "simulate-backfill": ("ingest.simulator", "run_backfill", "replay simulated history into the DB"),
 }
 
