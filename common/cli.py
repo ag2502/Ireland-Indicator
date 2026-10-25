@@ -17,6 +17,7 @@ COMMANDS: dict[str, tuple[str, str, str]] = {
     "load-schedule": ("ingest.static_loader", "run", "download, version and load static GTFS"),
     "poll": ("ingest.poller", "run", "poll the realtime feeds (NTA or simulated) every 60 s"),
     "weather": ("ingest.weather", "run", "fetch hourly Dublin weather from Open-Meteo"),
+    "build-labels": ("pipeline.arrivals", "run", "reconstruct arrivals and no-show outcomes per day"),
     "simulate-backfill": ("ingest.simulator", "run_backfill", "replay simulated history into the DB"),
 }
 
