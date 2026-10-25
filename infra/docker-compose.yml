@@ -1,0 +1,104 @@
+# Production stack on one small VM. From the repo root:
+#   docker compose --env-file .env -f infra/docker-compose.yml up -d --build
+# Needs POSTGRES_PASSWORD and BT_DOMAIN in .env (see .env.example).
+
+name: bustrust
+
+x-python: &python
+  image: bustrust-python
+  build:
+    context: ..
+    dockerfile: infra/python.Dockerfile
+  env_file:
+    - path: ../.env
+      required: false
+  environment:
+    BT_DATABASE_URL: postgresql+psycopg://bustrust:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@db:5432/bustrust
+  volumes:
+    - btdata:/data
+  restart: unless-stopped
+  depends_on:
+    migrate:
+      condition: service_completed_successfully
+
+services:
+  db:
+    image: timescale/timescaledb:2.30.2-pg16
+    environment:
+      POSTGRES_USER: bustrust
+      POSTGRES_DB: bustrust
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U bustrust -d bustrust"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  # Creates tables and hypertables, then loads the current schedule. Runs once per `up`.
+  migrate:
+    <<: *python
+    command: ["sh", "-c", "bustrust init-db && bustrust load-schedule"]
+    restart: "no"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  # The only process that calls the NTA: one realtime call per key per 60 s.
+  poller:
+    <<: *python
+    command: ["bustrust", "poll"]
+
+  scorer:
+    <<: *python
+    command: ["bustrust", "score"]
+
+  jobs:
+    <<: *python
+    command: ["supercronic", "-passthrough-logs", "/etc/bustrust.crontab"]
+    environment:
+      BT_DATABASE_URL: postgresql+psycopg://bustrust:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@db:5432/bustrust
+      TZ: Europe/Dublin
+
+  api:
+    <<: *python
+    command: ["uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers", "--forwarded-allow-ips", "*"]
+    # /healthz answers 503 when the feed is stale; that is data health, not process health,
+    # so the check only asks whether the server answers at all.
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s -o /dev/null http://localhost:8000/healthz"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+
+  web:
+    build:
+      context: ../web
+    restart: unless-stopped
+    depends_on:
+      - api
+
+  caddy:
+    image: caddy:2.11
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      BT_DOMAIN: ${BT_DOMAIN:-localhost}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    restart: unless-stopped
+    depends_on:
+      - api
+      - web
+
+volumes:
+  pgdata:
+  btdata:
+  caddy_data:
+  caddy_config:

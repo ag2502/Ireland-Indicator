@@ -1,0 +1,17 @@
+# BusTrust batch jobs, run by supercronic in the `jobs` container. Times are Europe/Dublin
+# (TZ is set on the container). The bus day runs past midnight (GTFS 25:xx times), so the
+# nightly chain waits until 04:00, when yesterday's last buses are long done.
+
+# Weather for the features: hourly.
+15 * * * * bustrust weather
+
+# Static schedule: a new version is loaded only when the zip changes.
+0 4 * * * bustrust load-schedule
+
+# Nightly chain, in order: labels -> features -> route scores -> live accuracy, then checks.
+# Checks run even if a step failed, and exit 1 so the failure shows in the logs.
+30 4 * * * bustrust build-labels --days 1 && bustrust features --days 1 && bustrust scores --days 1 && bustrust accuracy; bustrust checks
+
+# Weekly retrain on Monday. A new model is promoted only if it beats the current one on
+# the same test days and its range still covers 78-82%.
+30 6 * * 1 bustrust train --report /data/reports/evaluation.json

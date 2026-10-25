@@ -1,0 +1,14 @@
+.git
+.venv
+.env
+.env.*
+data
+web
+docs
+notebooks
+tests
+.impeccable
+**/__pycache__
+.mypy_cache
+.pytest_cache
+.ruff_cache

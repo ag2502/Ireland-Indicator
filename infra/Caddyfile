@@ -1,0 +1,22 @@
+# One origin for the app and the API, so the browser never needs CORS.
+# Caddy fetches and renews the TLS certificate for BT_DOMAIN by itself.
+{$BT_DOMAIN:localhost} {
+	encode zstd gzip
+
+	@api path /v1/* /healthz
+	handle @api {
+		reverse_proxy api:8000
+	}
+	handle {
+		reverse_proxy web:3000
+	}
+
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options nosniff
+		Referrer-Policy strict-origin-when-cross-origin
+		# Nearby asks for location on the device only; nothing else is needed.
+		Permissions-Policy "geolocation=(self), camera=(), microphone=()"
+		-Server
+	}
+}

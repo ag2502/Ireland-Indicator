@@ -5,6 +5,7 @@ import type { NextConfig } from "next";
 const api = process.env.BUSTRUST_API_URL ?? "http://127.0.0.1:8000";
 
 const config: NextConfig = {
+  output: "standalone", // the Docker image runs .next/standalone/server.js
   reactStrictMode: true,
   poweredByHeader: false,
   async rewrites() {
