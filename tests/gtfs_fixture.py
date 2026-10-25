@@ -47,22 +47,48 @@ def make_zip(n_trips: int = 12, start_s: int = 7 * 3600, headway_s: int = 600) -
     st.append(["C1", "08:00:00", "08:00:00", "XX", 1])
 
     files = {
-        "agency.txt": _csv([["agency_id", "agency_name", "agency_url", "agency_timezone"],
-                            ["1", "Dublin Bus", "https://x", "Europe/London"],
-                            ["2", "Bus Eireann", "https://y", "Europe/London"]]),
-        "routes.txt": _csv([["route_id", "agency_id", "route_short_name", "route_long_name", "route_type"],
-                            ["R1", "1", "39A", "Ongar - UCD", 3],
-                            ["R9", "2", "220", "Cork", 3]]),
+        "agency.txt": _csv(
+            [
+                ["agency_id", "agency_name", "agency_url", "agency_timezone"],
+                ["1", "Dublin Bus", "https://x", "Europe/London"],
+                ["2", "Bus Eireann", "https://y", "Europe/London"],
+            ]
+        ),
+        "routes.txt": _csv(
+            [
+                ["route_id", "agency_id", "route_short_name", "route_long_name", "route_type"],
+                ["R1", "1", "39A", "Ongar - UCD", 3],
+                ["R9", "2", "220", "Cork", 3],
+            ]
+        ),
         "trips.txt": _csv(trips),
         "stop_times.txt": _csv(st),
         "stops.txt": _csv(stops),
         "shapes.txt": _csv(shape),
-        "calendar.txt": _csv([["service_id", "monday", "tuesday", "wednesday", "thursday", "friday",
-                               "saturday", "sunday", "start_date", "end_date"],
-                              ["WK", 1, 1, 1, 1, 1, 1, 1, "20261001", "20271231"]]),
+        "calendar.txt": _csv(
+            [
+                [
+                    "service_id",
+                    "monday",
+                    "tuesday",
+                    "wednesday",
+                    "thursday",
+                    "friday",
+                    "saturday",
+                    "sunday",
+                    "start_date",
+                    "end_date",
+                ],
+                ["WK", 1, 1, 1, 1, 1, 1, 1, "20261001", "20271231"],
+            ]
+        ),
         "calendar_dates.txt": _csv([["service_id", "date", "exception_type"], ["WK", "20261225", 2]]),
-        "feed_info.txt": _csv([["feed_publisher_name", "feed_start_date", "feed_end_date", "feed_version"],
-                               ["NTA", "20261001", "20271231", "TEST-1"]]),
+        "feed_info.txt": _csv(
+            [
+                ["feed_publisher_name", "feed_start_date", "feed_end_date", "feed_version"],
+                ["NTA", "20261001", "20271231", "TEST-1"],
+            ]
+        ),
     }
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w") as zf:

@@ -61,8 +61,7 @@ def test_schedule_service_dates_and_epochs(loaded):
 def test_active_service_ids_weekday_mask():
     import pandas as pd
 
-    cal = pd.DataFrame([{"service_id": "A", "days": "1111100", "start_date": "20261001",
-                         "end_date": "20261231"}])
+    cal = pd.DataFrame([{"service_id": "A", "days": "1111100", "start_date": "20261001", "end_date": "20261231"}])
     cd = pd.DataFrame(columns=["service_id", "date", "exception_type"])
     assert active_service_ids(cal, cd, "20261102") == {"A"}  # Monday
     assert active_service_ids(cal, cd, "20261107") == set()  # Saturday
@@ -73,6 +72,7 @@ def test_project_stops_in_order_handles_loops():
     line = LineString([(0, 0), (100, 0), (100, 10), (0, 10)])
     lon_lat = []
     from pyproj import Transformer
+
     back = Transformer.from_crs("EPSG:2157", "EPSG:4326", always_xy=True)
     base_x, base_y = geo.to_itm(-6.26, 53.35)
     line = LineString([(base_x + x, base_y + y) for x, y in line.coords])

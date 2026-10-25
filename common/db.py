@@ -38,7 +38,8 @@ metadata = MetaData()
 
 # ---------------------------------------------------------------- ingestion
 poll_log = Table(
-    "poll_log", metadata,
+    "poll_log",
+    metadata,
     Column("polled_at", BigInteger, nullable=False),
     Column("feed", String(32), nullable=False),  # trip_updates | vehicles | static | weather
     Column("key_index", Integer),
@@ -53,7 +54,8 @@ poll_log = Table(
 )
 
 feed_gaps = Table(
-    "feed_gaps", metadata,
+    "feed_gaps",
+    metadata,
     Column("feed", String(32), nullable=False),
     Column("start_at", BigInteger, nullable=False),
     Column("end_at", BigInteger, nullable=False),
@@ -62,7 +64,8 @@ feed_gaps = Table(
 )
 
 vehicle_positions = Table(
-    "vehicle_positions", metadata,
+    "vehicle_positions",
+    metadata,
     Column("polled_at", BigInteger, nullable=False),
     Column("ping_at", BigInteger),  # VehiclePosition.timestamp
     Column("vehicle_id", String(64)),
@@ -80,7 +83,8 @@ vehicle_positions = Table(
 )
 
 trip_updates = Table(
-    "trip_updates", metadata,
+    "trip_updates",
+    metadata,
     Column("polled_at", BigInteger, nullable=False),
     Column("trip_at", BigInteger),  # TripUpdate.timestamp
     Column("trip_id", String(64), nullable=False),
@@ -102,7 +106,8 @@ trip_updates = Table(
 )
 
 weather_hourly = Table(
-    "weather_hourly", metadata,
+    "weather_hourly",
+    metadata,
     Column("hour_at", BigInteger, primary_key=True),
     Column("temp_c", Float),
     Column("precip_mm", Float),
@@ -112,7 +117,8 @@ weather_hourly = Table(
 
 # ---------------------------------------------------------------- static schedule
 schedule_versions = Table(
-    "schedule_versions", metadata,
+    "schedule_versions",
+    metadata,
     Column("schedule_version", String(64), primary_key=True),  # sha256[:16] of the zip
     Column("feed_version", String(64)),
     Column("feed_start", String(8)),
@@ -123,7 +129,8 @@ schedule_versions = Table(
 )
 
 gtfs_routes = Table(
-    "gtfs_routes", metadata,
+    "gtfs_routes",
+    metadata,
     Column("schedule_version", String(64), nullable=False),
     Column("route_id", String(64), nullable=False),
     Column("agency_id", String(16)),
@@ -134,7 +141,8 @@ gtfs_routes = Table(
 )
 
 gtfs_stops = Table(
-    "gtfs_stops", metadata,
+    "gtfs_stops",
+    metadata,
     Column("schedule_version", String(64), nullable=False),
     Column("stop_id", String(64), nullable=False),
     Column("stop_code", String(32)),
@@ -145,7 +153,8 @@ gtfs_stops = Table(
 )
 
 gtfs_trips = Table(
-    "gtfs_trips", metadata,
+    "gtfs_trips",
+    metadata,
     Column("schedule_version", String(64), nullable=False),
     Column("trip_id", String(64), nullable=False),
     Column("route_id", String(64)),
@@ -161,7 +170,8 @@ gtfs_trips = Table(
 )
 
 gtfs_stop_times = Table(
-    "gtfs_stop_times", metadata,
+    "gtfs_stop_times",
+    metadata,
     Column("schedule_version", String(64), nullable=False),
     Column("trip_id", String(64), nullable=False),
     Column("stop_sequence", Integer, nullable=False),
@@ -174,7 +184,8 @@ gtfs_stop_times = Table(
 )
 
 gtfs_shapes = Table(
-    "gtfs_shapes", metadata,
+    "gtfs_shapes",
+    metadata,
     Column("schedule_version", String(64), nullable=False),
     Column("shape_id", String(64), nullable=False),
     Column("coords", Text, nullable=False),  # JSON [[lon, lat], ...]
@@ -183,7 +194,8 @@ gtfs_shapes = Table(
 )
 
 gtfs_calendar = Table(
-    "gtfs_calendar", metadata,
+    "gtfs_calendar",
+    metadata,
     Column("schedule_version", String(64), nullable=False),
     Column("service_id", String(64), nullable=False),
     Column("days", String(7)),  # '1111100' Monday..Sunday
@@ -192,7 +204,8 @@ gtfs_calendar = Table(
 )
 
 gtfs_calendar_dates = Table(
-    "gtfs_calendar_dates", metadata,
+    "gtfs_calendar_dates",
+    metadata,
     Column("schedule_version", String(64), nullable=False),
     Column("service_id", String(64), nullable=False),
     Column("date", String(8)),
@@ -201,7 +214,8 @@ gtfs_calendar_dates = Table(
 
 # ---------------------------------------------------------------- derived
 arrivals = Table(
-    "arrivals", metadata,
+    "arrivals",
+    metadata,
     Column("service_date", String(8), nullable=False),
     Column("trip_id", String(64), nullable=False),
     Column("stop_sequence", Integer, nullable=False),
@@ -218,7 +232,8 @@ arrivals = Table(
 )
 
 trip_outcomes = Table(
-    "trip_outcomes", metadata,
+    "trip_outcomes",
+    metadata,
     Column("service_date", String(8), nullable=False),
     Column("trip_id", String(64), nullable=False),
     Column("route_id", String(64)),
@@ -232,7 +247,8 @@ trip_outcomes = Table(
 )
 
 predictions_log = Table(
-    "predictions_log", metadata,
+    "predictions_log",
+    metadata,
     Column("made_at", BigInteger, nullable=False),
     Column("service_date", String(8)),
     Column("trip_id", String(64)),
@@ -252,7 +268,8 @@ predictions_log = Table(
 
 # Replaced wholesale after every scoring run; the API's hot path reads only this.
 live_board = Table(
-    "live_board", metadata,
+    "live_board",
+    metadata,
     Column("made_at", BigInteger, nullable=False),
     Column("stop_id", String(64), nullable=False),
     Column("service_date", String(8)),
@@ -274,7 +291,8 @@ live_board = Table(
 )
 
 route_scores_daily = Table(
-    "route_scores_daily", metadata,
+    "route_scores_daily",
+    metadata,
     Column("service_date", String(8), nullable=False),
     Column("route_id", String(64), nullable=False),
     Column("direction_id", Integer, nullable=False),
@@ -294,7 +312,8 @@ route_scores_daily = Table(
 )
 
 route_heatmap = Table(
-    "route_heatmap", metadata,
+    "route_heatmap",
+    metadata,
     Column("route_id", String(64), nullable=False),
     Column("weekday", Integer, nullable=False),  # 0 = Monday
     Column("hour", Integer, nullable=False),
@@ -306,7 +325,8 @@ route_heatmap = Table(
 )
 
 segment_delays = Table(
-    "segment_delays", metadata,
+    "segment_delays",
+    metadata,
     Column("route_id", String(64), nullable=False),
     Column("direction_id", Integer),
     Column("from_stop_id", String(64)),
@@ -318,7 +338,8 @@ segment_delays = Table(
 )
 
 data_checks = Table(
-    "data_checks", metadata,
+    "data_checks",
+    metadata,
     Column("run_at", BigInteger, nullable=False),
     Column("check", String(64), nullable=False),
     Column("status", String(8), nullable=False),  # ok | warn | fail
@@ -327,7 +348,8 @@ data_checks = Table(
 )
 
 model_registry = Table(
-    "model_registry", metadata,
+    "model_registry",
+    metadata,
     Column("model_version", String(64), primary_key=True),
     Column("kind", String(16)),  # arrival | noshow
     Column("created_at", BigInteger),
@@ -337,7 +359,8 @@ model_registry = Table(
 )
 
 accuracy_daily = Table(
-    "accuracy_daily", metadata,
+    "accuracy_daily",
+    metadata,
     Column("service_date", String(8), nullable=False),
     Column("horizon", String(8), nullable=False),  # 0-5, 5-10, ...
     Column("n", Integer),
@@ -388,28 +411,31 @@ def init_db(engine: Engine | None = None) -> Engine:
 
 def _setup_timescale(engine: Engine) -> None:
     with engine.begin() as conn:
-        has = conn.execute(
-            text("SELECT 1 FROM pg_available_extensions WHERE name = 'timescaledb'")
-        ).scalar()
+        has = conn.execute(text("SELECT 1 FROM pg_available_extensions WHERE name = 'timescaledb'")).scalar()
         if not has:
             log.warning("TimescaleDB not available; using plain Postgres tables")
             return
         conn.execute(text("CREATE EXTENSION IF NOT EXISTS timescaledb"))
-        conn.execute(text(
-            "CREATE OR REPLACE FUNCTION unix_now() RETURNS BIGINT LANGUAGE SQL STABLE "
-            "AS $$ SELECT extract(epoch FROM now())::BIGINT $$"
-        ))
+        conn.execute(
+            text(
+                "CREATE OR REPLACE FUNCTION unix_now() RETURNS BIGINT LANGUAGE SQL STABLE "
+                "AS $$ SELECT extract(epoch FROM now())::BIGINT $$"
+            )
+        )
         for table, col, compress_days in HYPERTABLES:
-            conn.execute(text(
-                f"SELECT create_hypertable('{table}', '{col}', chunk_time_interval => 86400, "
-                "if_not_exists => TRUE, migrate_data => TRUE)"
-            ))
+            conn.execute(
+                text(
+                    f"SELECT create_hypertable('{table}', '{col}', chunk_time_interval => 86400, "
+                    "if_not_exists => TRUE, migrate_data => TRUE)"
+                )
+            )
             conn.execute(text(f"SELECT set_integer_now_func('{table}', 'unix_now', TRUE)"))
             conn.execute(text(f"ALTER TABLE {table} SET (timescaledb.compress)"))
-            conn.execute(text(
-                f"SELECT add_compression_policy('{table}', BIGINT '{compress_days * 86400}', "
-                "if_not_exists => TRUE)"
-            ))
+            conn.execute(
+                text(
+                    f"SELECT add_compression_policy('{table}', BIGINT '{compress_days * 86400}', if_not_exists => TRUE)"
+                )
+            )
 
 
 def insert_rows(
@@ -435,9 +461,7 @@ def insert_rows(
     return len(rows)
 
 
-def upsert_rows(
-    engine: Engine, table: Table, rows: Sequence[Mapping[str, Any]], keys: list[str]
-) -> int:
+def upsert_rows(engine: Engine, table: Table, rows: Sequence[Mapping[str, Any]], keys: list[str]) -> int:
     """Insert or replace on the given unique key columns."""
     rows = list(rows)
     if not rows:

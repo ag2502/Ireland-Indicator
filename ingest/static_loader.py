@@ -50,9 +50,7 @@ def _secs(col: pd.Series) -> pd.Series:
     return parts[0] * 3600 + parts[1] * 60 + parts[2]
 
 
-def parse(
-    data: bytes, agency_ids: list[str], route_short_names: list[str] | None = None
-) -> dict[str, pd.DataFrame]:
+def parse(data: bytes, agency_ids: list[str], route_short_names: list[str] | None = None) -> dict[str, pd.DataFrame]:
     """Parse the zip into frames shaped like the gtfs_* tables (without schedule_version)."""
     zf = zipfile.ZipFile(io.BytesIO(data))
     routes = _read(zf, "routes.txt")
@@ -101,8 +99,10 @@ def parse(
             chunk = chunk[chunk["shape_id"].isin(keep_shapes)]
             if len(chunk):
                 shape_chunks.append(chunk)
-    shp = pd.concat(shape_chunks, ignore_index=True) if shape_chunks else pd.DataFrame(
-        columns=["shape_id", "shape_pt_lat", "shape_pt_lon", "shape_pt_sequence"]
+    shp = (
+        pd.concat(shape_chunks, ignore_index=True)
+        if shape_chunks
+        else pd.DataFrame(columns=["shape_id", "shape_pt_lat", "shape_pt_lon", "shape_pt_sequence"])
     )
     shp["shape_pt_sequence"] = shp["shape_pt_sequence"].astype(int)
     shp = shp.sort_values(["shape_id", "shape_pt_sequence"])
@@ -112,11 +112,13 @@ def parse(
         coords = np.column_stack([g["shape_pt_lon"].astype(float), g["shape_pt_lat"].astype(float)])
         line = geo.shape_line(coords)
         lines[shape_id] = line
-        shapes_rows.append({
-            "shape_id": shape_id,
-            "coords": json.dumps(np.round(coords, 6).tolist(), separators=(",", ":")),
-            "length_m": round(line.length, 1),
-        })
+        shapes_rows.append(
+            {
+                "shape_id": shape_id,
+                "coords": json.dumps(np.round(coords, 6).tolist(), separators=(",", ":")),
+                "length_m": round(line.length, 1),
+            }
+        )
     shapes = pd.DataFrame(shapes_rows, columns=["shape_id", "coords", "length_m"])
 
     st["dist_m"] = _stop_distances(st, trips, stops, lines)
@@ -126,16 +128,20 @@ def parse(
         days = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
         calendar["days"] = calendar[days].agg("".join, axis=1)
         calendar = calendar[["service_id", "days", "start_date", "end_date"]]
-    cal_dates = (
-        _read(zf, "calendar_dates.txt") if "calendar_dates.txt" in zf.namelist() else pd.DataFrame()
-    )
+    cal_dates = _read(zf, "calendar_dates.txt") if "calendar_dates.txt" in zf.namelist() else pd.DataFrame()
     if len(cal_dates):
         cal_dates["exception_type"] = cal_dates["exception_type"].astype(int)
 
     feed_info = _read(zf, "feed_info.txt") if "feed_info.txt" in zf.namelist() else pd.DataFrame()
     return {
-        "routes": routes, "trips": trips, "stop_times": st, "stops": stops, "shapes": shapes,
-        "calendar": calendar, "calendar_dates": cal_dates, "feed_info": feed_info,
+        "routes": routes,
+        "trips": trips,
+        "stop_times": st,
+        "stops": stops,
+        "shapes": shapes,
+        "calendar": calendar,
+        "calendar_dates": cal_dates,
+        "feed_info": feed_info,
     }
 
 
@@ -157,22 +163,19 @@ def _stop_distances(st: pd.DataFrame, trips: pd.DataFrame, stops: pd.DataFrame, 
         pattern = (shape_id, tuple(stop_ids[a:b]))
         if pattern not in cache:
             ll = pos.loc[list(pattern[1])]
-            cache[pattern] = geo.project_stops_in_order(
-                line, list(zip(ll["stop_lon"], ll["stop_lat"], strict=True))
-            )
+            cache[pattern] = geo.project_stops_in_order(line, list(zip(ll["stop_lon"], ll["stop_lat"], strict=True)))
         out[a:b] = cache[pattern]
     return out
 
 
-def load(engine: Engine, data: bytes, agency_ids: list[str] | None = None,
-         route_short_names: list[str] | None = None) -> str | None:
+def load(
+    engine: Engine, data: bytes, agency_ids: list[str] | None = None, route_short_names: list[str] | None = None
+) -> str | None:
     """Load a zip if its version is new. Returns the version loaded, or None if skipped."""
     version = version_of(data)
     with engine.connect() as conn:
         exists = conn.execute(
-            select(db.schedule_versions.c.loaded_at).where(
-                db.schedule_versions.c.schedule_version == version
-            )
+            select(db.schedule_versions.c.loaded_at).where(db.schedule_versions.c.schedule_version == version)
         ).first()
     if exists and exists[0]:
         log.info("schedule %s already loaded", version)
@@ -188,8 +191,12 @@ def load(engine: Engine, data: bytes, agency_ids: list[str] | None = None,
         "n_trips": len(frames["trips"]),
     }
     targets = {
-        "routes": db.gtfs_routes, "trips": db.gtfs_trips, "stop_times": db.gtfs_stop_times,
-        "stops": db.gtfs_stops, "shapes": db.gtfs_shapes, "calendar": db.gtfs_calendar,
+        "routes": db.gtfs_routes,
+        "trips": db.gtfs_trips,
+        "stop_times": db.gtfs_stop_times,
+        "stops": db.gtfs_stops,
+        "shapes": db.gtfs_shapes,
+        "calendar": db.gtfs_calendar,
         "calendar_dates": db.gtfs_calendar_dates,
     }
     for name, table in targets.items():

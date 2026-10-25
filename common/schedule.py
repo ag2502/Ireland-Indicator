@@ -26,18 +26,28 @@ def latest_version(engine: Engine, at: int | None = None) -> str | None:
     with engine.connect() as conn:
         row = conn.execute(text(sql), params).first()
         if row is None and at is not None:  # data older than our first load: use the oldest
-            row = conn.execute(text(
-                "SELECT schedule_version FROM schedule_versions WHERE loaded_at IS NOT NULL "
-                "ORDER BY loaded_at ASC LIMIT 1"
-            )).first()
+            row = conn.execute(
+                text(
+                    "SELECT schedule_version FROM schedule_versions WHERE loaded_at IS NOT NULL "
+                    "ORDER BY loaded_at ASC LIMIT 1"
+                )
+            ).first()
     return row[0] if row else None
 
 
 class Schedule:
-    def __init__(self, version: str, routes: pd.DataFrame, stops: pd.DataFrame,
-                 trips: pd.DataFrame, stop_times: pd.DataFrame, shapes: pd.DataFrame,
-                 calendar: pd.DataFrame, calendar_dates: pd.DataFrame,
-                 service_dates: list[str]):
+    def __init__(
+        self,
+        version: str,
+        routes: pd.DataFrame,
+        stops: pd.DataFrame,
+        trips: pd.DataFrame,
+        stop_times: pd.DataFrame,
+        shapes: pd.DataFrame,
+        calendar: pd.DataFrame,
+        calendar_dates: pd.DataFrame,
+        service_dates: list[str],
+    ):
         self.version = version
         self.routes = routes
         self.stops = stops
@@ -50,8 +60,9 @@ class Schedule:
 
     # ---------------------------------------------------------------- loading
     @classmethod
-    def load(cls, engine: Engine, version: str | None = None,
-             service_dates: list[str | date] | None = None) -> Schedule:
+    def load(
+        cls, engine: Engine, version: str | None = None, service_dates: list[str | date] | None = None
+    ) -> Schedule:
         version = version or latest_version(engine)
         if version is None:
             raise RuntimeError("no static schedule loaded; run `bustrust load-schedule` first")
@@ -59,10 +70,16 @@ class Schedule:
         q = lambda sql: pd.read_sql(text(sql), engine, params=v)  # noqa: E731
         calendar = q("SELECT service_id, days, start_date, end_date FROM gtfs_calendar WHERE schedule_version = :v")
         cal_dates = q("SELECT service_id, date, exception_type FROM gtfs_calendar_dates WHERE schedule_version = :v")
-        routes = q("SELECT route_id, agency_id, route_short_name, route_long_name FROM gtfs_routes WHERE schedule_version = :v")
-        stops = q("SELECT stop_id, stop_code, stop_name, stop_lat, stop_lon FROM gtfs_stops WHERE schedule_version = :v")
-        all_trips = q("SELECT trip_id, route_id, service_id, direction_id, shape_id, block_id, "
-                      "trip_headsign, first_dep_s, last_arr_s FROM gtfs_trips WHERE schedule_version = :v")
+        routes = q(
+            "SELECT route_id, agency_id, route_short_name, route_long_name FROM gtfs_routes WHERE schedule_version = :v"
+        )
+        stops = q(
+            "SELECT stop_id, stop_code, stop_name, stop_lat, stop_lon FROM gtfs_stops WHERE schedule_version = :v"
+        )
+        all_trips = q(
+            "SELECT trip_id, route_id, service_id, direction_id, shape_id, block_id, "
+            "trip_headsign, first_dep_s, last_arr_s FROM gtfs_trips WHERE schedule_version = :v"
+        )
         dates = [parse_service_date(d).strftime("%Y%m%d") for d in (service_dates or [])]
         if dates:
             frames = []
@@ -77,17 +94,23 @@ class Schedule:
             # filter in SQL via the trip join; service_ids are few, trip_ids are many
             placeholders = ", ".join(f":s{i}" for i in range(len(sids)))
             params = {"v": version, **{f"s{i}": s for i, s in enumerate(sids)}}
-            st = pd.read_sql(text(
-                "SELECT st.trip_id, st.stop_sequence, st.stop_id, st.arrival_s, st.departure_s, st.dist_m "
-                "FROM gtfs_stop_times st JOIN gtfs_trips t "
-                "ON t.schedule_version = st.schedule_version AND t.trip_id = st.trip_id "
-                f"WHERE st.schedule_version = :v AND t.service_id IN ({placeholders})"
-            ), engine, params=params)
+            st = pd.read_sql(
+                text(
+                    "SELECT st.trip_id, st.stop_sequence, st.stop_id, st.arrival_s, st.departure_s, st.dist_m "
+                    "FROM gtfs_stop_times st JOIN gtfs_trips t "
+                    "ON t.schedule_version = st.schedule_version AND t.trip_id = st.trip_id "
+                    f"WHERE st.schedule_version = :v AND t.service_id IN ({placeholders})"
+                ),
+                engine,
+                params=params,
+            )
         elif dates:
             st = pd.DataFrame(columns=["trip_id", "stop_sequence", "stop_id", "arrival_s", "departure_s", "dist_m"])
         else:
-            st = q("SELECT trip_id, stop_sequence, stop_id, arrival_s, departure_s, dist_m "
-                   "FROM gtfs_stop_times WHERE schedule_version = :v")
+            st = q(
+                "SELECT trip_id, stop_sequence, stop_id, arrival_s, departure_s, dist_m "
+                "FROM gtfs_stop_times WHERE schedule_version = :v"
+            )
         st = st.sort_values(["trip_id", "stop_sequence"], ignore_index=True)
         shape_ids = set(trips["shape_id"].dropna())
         shapes = q("SELECT shape_id, coords, length_m FROM gtfs_shapes WHERE schedule_version = :v")
@@ -125,8 +148,9 @@ class Schedule:
         trips = self.trips[self.trips["service_date"] == service_date]
         st = self.stop_times[self.stop_times["trip_id"].isin(set(trips["trip_id"]))]
         st = st.merge(
-            trips[["trip_id", "route_id", "route_short_name", "direction_id", "shape_id",
-                   "trip_headsign", "block_id"]], on="trip_id")
+            trips[["trip_id", "route_id", "route_short_name", "direction_id", "shape_id", "trip_headsign", "block_id"]],
+            on="trip_id",
+        )
         return st.assign(
             service_date=service_date,
             scheduled_at=ref + st["arrival_s"].astype("int64"),
@@ -140,8 +164,7 @@ def active_service_ids(calendar: pd.DataFrame, cal_dates: pd.DataFrame, service_
     wd = d.weekday()
     on = set()
     if len(calendar):
-        m = (calendar["start_date"] <= ds) & (calendar["end_date"] >= ds) & (
-            calendar["days"].str[wd] == "1")
+        m = (calendar["start_date"] <= ds) & (calendar["end_date"] >= ds) & (calendar["days"].str[wd] == "1")
         on = set(calendar.loc[m, "service_id"])
     if len(cal_dates):
         today = cal_dates[cal_dates["date"] == ds]

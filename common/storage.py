@@ -62,6 +62,4 @@ def list_keys(base: str, prefix: str = "") -> list[str]:
     root_path = Path(base)
     if not root_path.exists():
         return []
-    return sorted(
-        str(p.relative_to(root_path)) for p in (root_path / prefix).rglob("*") if p.is_file()
-    )
+    return sorted(str(p.relative_to(root_path)) for p in (root_path / prefix).rglob("*") if p.is_file())

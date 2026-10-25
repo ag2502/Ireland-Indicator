@@ -41,9 +41,7 @@ def project_stops_in_order(
     out: list[float] = []
     prev = 0.0
     length = line.length
-    xs, ys = to_itm(
-        np.array([s[0] for s in stops_lonlat]), np.array([s[1] for s in stops_lonlat])
-    )
+    xs, ys = to_itm(np.array([s[0] for s in stops_lonlat]), np.array([s[1] for s in stops_lonlat]))
     coords = np.asarray(line.coords)
     cum = np.concatenate([[0.0], np.cumsum(np.hypot(*np.diff(coords, axis=0).T))])
     for x, y in zip(np.atleast_1d(xs), np.atleast_1d(ys), strict=True):

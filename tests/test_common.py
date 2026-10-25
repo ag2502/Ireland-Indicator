@@ -67,13 +67,21 @@ def test_settings_split_csv(monkeypatch):
 
 def test_insert_ignore_and_upsert(engine):
     row = {
-        "service_date": "20261020", "trip_id": "t1", "stop_sequence": 1, "stop_id": "s",
-        "route_id": "r", "scheduled_at": 100, "actual_at": 160, "method": "gps_interp",
+        "service_date": "20261020",
+        "trip_id": "t1",
+        "stop_sequence": 1,
+        "stop_id": "s",
+        "route_id": "r",
+        "scheduled_at": 100,
+        "actual_at": 160,
+        "method": "gps_interp",
     }
     db.insert_rows(engine, db.arrivals, [row])
     db.insert_rows(engine, db.arrivals, [row], ignore_conflicts=True)
     db.upsert_rows(
-        engine, db.arrivals, [{**row, "actual_at": 200}],
+        engine,
+        db.arrivals,
+        [{**row, "actual_at": 200}],
         keys=["service_date", "trip_id", "stop_sequence"],
     )
     with engine.connect() as conn:
