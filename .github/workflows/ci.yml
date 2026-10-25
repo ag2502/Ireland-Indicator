@@ -17,7 +17,7 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5
-      - uses: astral-sh/setup-uv@v6
+      - uses: astral-sh/setup-uv@v7
         with:
           version: "0.12.9"
           python-version: "3.12"
@@ -53,10 +53,14 @@ jobs:
       - uses: actions/checkout@v5
       - run: docker build -f infra/python.Dockerfile -t bustrust-python .
       - run: docker build -t bustrust-web web
-      - name: Smoke test the Python image
-        run: |
-          docker run --rm bustrust-python bustrust --help
-          docker run --rm bustrust-python python -c "import lightgbm, api.main"
-          docker run --rm bustrust-python supercronic -test /etc/bustrust.crontab
+      # one step per check, so the step name says which one broke
+      - name: "Image: user and interpreter"
+        run: docker run --rm bustrust-python sh -c 'id && command -v python bustrust && python -V'
+      - name: "Image: CLI starts"
+        run: docker run --rm bustrust-python bustrust --help
+      - name: "Image: LightGBM and the API import"
+        run: docker run --rm bustrust-python python -c "import lightgbm, api.main"
+      - name: "Image: crontab parses"
+        run: docker run --rm bustrust-python supercronic -test /etc/bustrust.crontab
       - name: Validate the compose file
         run: POSTGRES_PASSWORD=ci docker compose -f infra/docker-compose.yml config --quiet

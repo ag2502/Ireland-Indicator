@@ -22,7 +22,10 @@ RUN case "$TARGETARCH" in \
     && echo "${sha}  /usr/local/bin/supercronic" | sha1sum -c - \
     && chmod +x /usr/local/bin/supercronic
 
+# UV_PYTHON_DOWNLOADS=0: build the venv on this image's Python, never on one uv fetches
+# into /root, which the unprivileged runtime user could not read.
 ENV UV_COMPILE_BYTECODE=1 \
+    UV_PYTHON_DOWNLOADS=0 \
     UV_LINK_MODE=copy \
     UV_PROJECT_ENVIRONMENT=/opt/venv \
     PATH=/opt/venv/bin:$PATH \
