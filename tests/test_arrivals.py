@@ -115,3 +115,22 @@ def test_propagate_inherits_nearest_preceding_update():
     assert 1 not in out.index  # already passed
     assert out.loc[2, "official_at"] == 160 and out.loc[3, "official_at"] == 260
     assert out.loc[4, "official_at"] == 420  # absolute time wins at its own stop
+
+
+def test_propagate_skipped_stop_keeps_upstream_delay():
+    sched = pd.DataFrame(
+        {"trip_id": "T", "stop_sequence": [1, 2, 3, 4], "stop_id": list("abcd"), "scheduled_at": [0, 100, 200, 300]}
+    )
+    base = {"polled_at": 50, "trip_id": "T", "arrival_at": None, "departure_delay": None, "trip_rel": "SCHEDULED",
+            "vehicle_id": "V"}  # fmt: skip
+    tu = pd.DataFrame(
+        [
+            {**base, "stop_sequence": 2, "arrival_delay": 90, "stop_rel": "SCHEDULED"},
+            {**base, "stop_sequence": 3, "arrival_delay": None, "stop_rel": "SKIPPED"},
+        ]
+    )
+    out = propagate(tu, sched).set_index("stop_sequence")
+    assert 3 not in out.index  # no prediction at a stop the bus will not serve
+    assert out.loc[4, "official_at"] == 390  # but the delay carries on past it
+    nd = tu.assign(stop_rel=["SCHEDULED", "NO_DATA"])
+    assert set(propagate(nd, sched)["stop_sequence"]) == {2}  # NO_DATA blocks downstream

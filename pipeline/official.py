@@ -21,7 +21,8 @@ def propagate(tu: pd.DataFrame, sched: pd.DataFrame) -> pd.DataFrame:
 
     Returns polled_at, trip_id, stop_sequence, stop_id, scheduled_at, official_at,
     official_delay, upd_seq (the update the delay came from), vehicle_id.
-    Cancelled trips and stops marked SKIPPED/NO_DATA produce no rows.
+    Cancelled trips and stops marked SKIPPED/NO_DATA produce no rows; a SKIPPED stop still
+    passes its upstream delay on to the stops after it (GTFS-Realtime spec).
     """
     cols = ["polled_at", "trip_id", "stop_sequence", "stop_id", "scheduled_at", "official_at", "official_delay"]
     if tu.empty:
@@ -35,7 +36,11 @@ def propagate(tu: pd.DataFrame, sched: pd.DataFrame) -> pd.DataFrame:
     delay = delay.fillna(u["departure_delay"].astype("float"))
     delay = delay.fillna(u["arrival_at"].astype("float") - u["scheduled_at"])
     u = u.assign(delay=delay, upd_seq=u["stop_sequence"])
-    no_data = u["stop_rel"].isin(["NO_DATA", "SKIPPED"])
+    # SKIPPED: no prediction at that stop, but the upstream delay carries on past it.
+    # NO_DATA: no prediction there or (until the next update) downstream.
+    skipped = u[u["stop_rel"] == "SKIPPED"][["polled_at", "trip_id", "upd_seq"]]
+    u = u[u["stop_rel"] != "SKIPPED"]
+    no_data = u["stop_rel"] == "NO_DATA"
     u = u[["polled_at", "trip_id", "upd_seq", "delay", "vehicle_id"]].assign(blocked=no_data.to_numpy())
 
     # cross every update with its trip's stops at or after it, keep the nearest update
@@ -45,6 +50,10 @@ def propagate(tu: pd.DataFrame, sched: pd.DataFrame) -> pd.DataFrame:
     m = m.drop_duplicates(["polled_at", "trip_id", "stop_sequence"], keep="last")
     m = m[~(m["blocked"] & (m["stop_sequence"] == m["upd_seq"]))]
     m = m[m["delay"].notna()]
+    if len(skipped):
+        skip_key = skipped.rename(columns={"upd_seq": "stop_sequence"}).assign(_skip=True)
+        m = m.merge(skip_key, on=["polled_at", "trip_id", "stop_sequence"], how="left")
+        m = m[m["_skip"].isna()]
     m["official_delay"] = m["delay"].round().astype("int64")
     m["official_at"] = m["scheduled_at"].astype("int64") + m["official_delay"]
     return m[[*cols, "upd_seq", "vehicle_id"]].reset_index(drop=True)

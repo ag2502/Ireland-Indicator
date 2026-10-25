@@ -178,6 +178,12 @@ def build_day(
     arrivals = pd.concat([gps.assign(service_date=service_date), fb.assign(service_date=service_date)])
     arrivals = arrivals.assign(schedule_version=version)[[*keep, "schedule_version"]]
     arrivals["actual_at"] = arrivals["actual_at"].round().astype("int64")
+    # a stop the feed said would be skipped (diversion) was driven past, not served
+    skipped = tu.loc[tu["stop_rel"] == "SKIPPED", ["trip_id", "stop_sequence"]].dropna().drop_duplicates()
+    if len(skipped):
+        key = skipped.astype({"stop_sequence": "int64"}).assign(_skip=True)
+        arrivals = arrivals.merge(key, on=["trip_id", "stop_sequence"], how="left")
+        arrivals = arrivals[arrivals["_skip"].isna()].drop(columns="_skip")
 
     # trip outcomes
     trips = se.groupby("trip_id").agg(
