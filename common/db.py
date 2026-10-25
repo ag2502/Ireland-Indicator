@@ -459,3 +459,40 @@ def replace_table(engine: Engine, table: Table, rows: Sequence[Mapping[str, Any]
         if rows:
             conn.execute(table.insert(), list(rows))
     return len(rows)
+
+
+def bulk_load_df(engine: Engine, table: Table, df: Any, chunk: int = 200_000) -> int:
+    """Fast append of a pandas DataFrame: COPY on Postgres, executemany on SQLite.
+    Columns not in the frame are left NULL."""
+    if df is None or len(df) == 0:
+        return 0
+    cols = [c.name for c in table.columns if c.name in df.columns]
+    frame = df[cols].astype(object).where(df[cols].notna(), None)
+    raw = engine.raw_connection()
+    try:
+        cur = raw.cursor()
+        if engine.dialect.name == "postgresql":
+            with cur.copy(f"COPY {table.name} ({', '.join(cols)}) FROM STDIN") as copy:  # type: ignore[attr-defined]
+                for rec in frame.itertuples(index=False, name=None):
+                    copy.write_row(rec)
+        else:
+            sql = f"INSERT INTO {table.name} ({', '.join(cols)}) VALUES ({', '.join('?' * len(cols))})"
+            values = frame.itertuples(index=False, name=None)
+            batch: list[tuple] = []
+            for rec in values:
+                batch.append(rec)
+                if len(batch) >= chunk:
+                    cur.executemany(sql, batch)
+                    batch = []
+            if batch:
+                cur.executemany(sql, batch)
+        raw.commit()
+    finally:
+        raw.close()
+    return len(frame)
+
+
+def run_init(argv: list[str] | None = None) -> int:
+    init_db()
+    log.info("database ready at %s", get_engine().url.render_as_string(hide_password=True))
+    return 0
