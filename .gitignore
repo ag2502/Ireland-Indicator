@@ -1,0 +1,35 @@
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+dist/
+build/
+
+# Local data: raw feeds, static zips, databases, models, parquet
+data/
+*.db
+*.db-journal
+*.parquet
+mlruns/
+
+# Secrets
+.env
+.env.*
+!.env.example
+
+# Web
+web/node_modules/
+web/.next/
+web/out/
+web/.vercel/
+web/next-env.d.ts
+web/tsconfig.tsbuildinfo
+
+# OS / editors
+.DS_Store
+.idea/
+.vscode/
