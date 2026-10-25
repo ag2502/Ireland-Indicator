@@ -36,6 +36,8 @@ def known_passages(ctx: F.DayContext, T: int) -> pd.DataFrame:
     if pa.empty:
         return pd.DataFrame(columns=["trip_id", "pos", "stop_id", "passed_at", "stop_sequence"])
     pa = pa[pa["known_at"] <= T]
+    # interpolated crossing times are fractional; storage is whole epoch seconds
+    pa = pa.assign(passed_at=pa["passed_at"].round().astype("int64"))
     return pa.merge(ctx.se[["trip_id", "pos", "stop_sequence"]], on=["trip_id", "pos"])[
         ["trip_id", "pos", "stop_id", "passed_at", "stop_sequence"]
     ]

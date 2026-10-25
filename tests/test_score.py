@@ -104,6 +104,7 @@ def test_live_status_departed_cancelled_and_where_the_bus_is(world):  # noqa: F8
         dep = board[board["status"] == "departed"]
         by_gps = dep[dep["passed_at"].notna()]
         assert by_gps["passed_at"].between(now - 900, now).all()
+        assert (by_gps["passed_at"] % 1 == 0).all()  # whole epoch seconds: the API model is int
         assert (by_gps["delay_s"] == (by_gps["passed_at"] - by_gps["scheduled_at"]).round()).all()
         # without GPS, a bus has left a stop when the feed stops predicting it
         assert (dep.loc[dep["passed_at"].isna(), "scheduled_at"] >= now - 900).all()
