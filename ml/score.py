@@ -182,13 +182,19 @@ class Scorer:
         passed = S.known_passages(ctx, now)
         moving = S.feed_progress(ctx, T, cancelled)
         reached = passed.groupby("trip_id")["pos"].max()
+
+        def reached_pos(trip_ids: pd.Series) -> pd.Series:
+            """Furthest stop position each trip's GPS has passed, -1 if none. Numeric even
+            when empty: pandas 3.1 will not compare an empty str-typed map with ints."""
+            return pd.to_numeric(trip_ids.map(reached), errors="coerce").fillna(-1)
+
         pings = S.latest_pings(vp[vp["trip_id"].isin(ctx.trips["trip_id"])], now)
         diverted = S.off_route(sched, ctx.trips, pings)
 
         feats = self.board_rows(ctx, now, T)
         if len(feats):
             # GPS beats the feed: a stop the bus has already passed is not still to come
-            gone = feats["pos"] <= feats["trip_id"].map(reached).fillna(-1)
+            gone = feats["pos"] <= reached_pos(feats["trip_id"])
             feats = feats[~gone & ~feats["trip_id"].isin(cancelled)].reset_index(drop=True)
         noshow = self.noshow_probs(ctx, feats, T, cancelled)
 
@@ -218,7 +224,7 @@ class Scorer:
         # buses without GPS: stops the feed has stopped predicting are behind them (when it left
         # is unknown, so these show for 15 minutes after the scheduled time)
         fed = se.merge(moving.rename("first_pos"), left_on="trip_id", right_index=True)
-        fed = fed[(fed["pos"] < fed["first_pos"]) & (fed["pos"] > fed["trip_id"].map(reached).fillna(-1))]
+        fed = fed[(fed["pos"] < fed["first_pos"]) & (fed["pos"] > reached_pos(fed["trip_id"]))]
         fed = fed[fed["scheduled_at"] >= now - S.DEPARTED_SHOW_S].drop(columns=["pos", "first_pos"])
         fed = fed.assign(route_id=fed["trip_id"].map(trip_route), status="departed", has_gps=False)
 
@@ -228,7 +234,7 @@ class Scorer:
         can = can.assign(route_id=can["trip_id"].map(trip_route), status="cancelled", has_gps=False)
 
         sk = se.merge(skipped, on=["trip_id", "stop_sequence"])
-        sk = sk[(sk["pos"] > sk["trip_id"].map(reached).fillna(-1)) & ~sk["trip_id"].isin(cancelled)]
+        sk = sk[(sk["pos"] > reached_pos(sk["trip_id"])) & ~sk["trip_id"].isin(cancelled)]
         sk = sk[(sk["scheduled_at"] >= now - 300) & (sk["scheduled_at"] <= now + self.horizon_s)].drop(columns="pos")
         sk = sk.assign(route_id=sk["trip_id"].map(trip_route), status="skipped", has_gps=False)
 
