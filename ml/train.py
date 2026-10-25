@@ -4,8 +4,9 @@ Split by time, never at random: the earliest days train, the next days calibrate
 latest days test. A new model replaces the promoted one only if it beats it on the same
 test days (lower MAE / higher PR-AUC) and its range coverage stays within 78-82%.
 
-The registry is `registry.json` beside the model files (local folder or S3), so the weekly
-GitHub Actions retrain can promote without touching the production database.
+The registry is `registry.json` beside the model files (local folder or S3); the scorer
+reads it to find the promoted models. The weekly retrain runs from the jobs container's
+cron (infra/crontab), and GitHub Actions copies its report into docs/evaluation.json.
 """
 
 from __future__ import annotations
