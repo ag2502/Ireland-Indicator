@@ -23,6 +23,8 @@ COMMANDS: dict[str, tuple[str, str, str]] = {
     "checks": ("pipeline.checks", "run", "daily data-quality checks (exit 1 on failure)"),
     "stopwatch": ("pipeline.stopwatch", "run", "compare hand-timed arrivals with reconstructed labels"),
     "train": ("ml.train", "run", "train, evaluate and promote the arrival-range and no-show models"),
+    "score": ("ml.score", "run", "score the live board every minute (after the poller)"),
+    "accuracy": ("ml.accuracy", "run", "grade yesterday's live predictions against arrivals"),
     "simulate-backfill": ("ingest.simulator", "run_backfill", "replay simulated history into the DB"),
 }
 
