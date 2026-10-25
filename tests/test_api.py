@@ -123,7 +123,8 @@ def test_vehicles_and_trip_timeline(client):
     states = [s["state"] for s in trip["stops"]]
     # passed stops come first, then the ones still to come
     assert states == sorted(states, key=lambda x: x != "passed")
-    assert all(s["passed_at"] for s in trip["stops"] if s["state"] == "passed")
+    # stops behind the bus are passed, timed when GPS saw it go by
+    assert all(s["passed_at"] is None or s["passed_at"] <= NOW for s in trip["stops"] if s["state"] == "passed")
     assert client.get("/v1/trips/nope").status_code == 404
 
 

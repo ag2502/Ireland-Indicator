@@ -1,3 +1,5 @@
+import json
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -87,6 +89,8 @@ def test_live_status_departed_cancelled_and_where_the_bus_is(world):  # noqa: F8
     sim = world[0]
     scorer = Scorer(sim.engine)
     ghosts = set(sim.truth(DAY)[1].query("ghost").index)
+    st = pd.read_sql("SELECT trip_id, stop_sequence FROM gtfs_stop_times", sim.engine)
+    sched_seqs = st.groupby("trip_id")["stop_sequence"].apply(list).to_dict()
     seen: dict[str, int] = {}
     located = 0
     keys = ["trip_id", "stop_sequence"]
@@ -118,6 +122,10 @@ def test_live_status_departed_cancelled_and_where_the_bus_is(world):  # noqa: F8
         assert (running.loc[running["lat"].notna(), "ping_at"] >= now - 300).all()
         assert not set(running["trip_id"]) & ghosts
         located += int(running["lat"].notna().sum())
+        for r in running.itertuples():
+            # every stop behind the bus counts as passed, so a journey view has no gaps
+            seqs = sorted(int(k) for k in json.loads(r.passed))
+            assert seqs == sorted(sched_seqs[r.trip_id])[: len(seqs)]
         on_road = board[board["vehicle_lat"].notna()]
         assert (on_road["trip_id"].isin(trips.loc[trips["lat"].notna(), "trip_id"])).all()
     assert seen.get("departed") and seen.get("cancelled") and seen.get("on_time")

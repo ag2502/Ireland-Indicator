@@ -122,6 +122,9 @@ def trip_summaries(
     nxt = upcoming.sort_values("stop_sequence").drop_duplicates("trip_id").set_index("trip_id")
     stop_at = ctx.se.set_index(["trip_id", "pos"])["stop_id"]
     last_by_feed = {t: stop_at[(t, int(k) - 1)] for t, k in moving.items()}
+    seqs_by = {
+        t: g.set_index("pos")["stop_sequence"] for t, g in ctx.se[ctx.se["trip_id"].isin(ids)].groupby("trip_id")
+    }
     rows = []
     for t in ids:
         if t not in trips.index:
@@ -166,14 +169,28 @@ def trip_summaries(
                 "next_stop_id": nxt.loc[t, "stop_id"] if t in nxt.index else None,
                 "off_route": t in diverted,
                 "skipped": json.dumps([int(s) for s in skipped_by.get(t, [])]),
-                "passed": json.dumps(
-                    {int(s): int(a) for s, a in zip(p["stop_sequence"], p["passed_at"], strict=True)}
-                    if p is not None
-                    else {}
-                ),
+                "passed": json.dumps(_passed(seqs_by.get(t), p, moving.get(t))),
                 "start_at": trips.loc[t, "start_at"],
                 "end_at": trips.loc[t, "end_at"],
                 "noshow_prob": noshow.get(t, np.nan),
             }
         )
     return pd.DataFrame(rows)
+
+
+def _passed(seqs: pd.Series | None, gps: pd.DataFrame | None, feed_pos: float | None) -> dict[int, int | None]:
+    """{stop_sequence: passed_at} for every stop behind the bus. GPS gives the time; stops
+    behind it that GPS did not catch (before we saw the bus, or between fixes), or that
+    the feed has stopped predicting, are passed at an unknown time (None)."""
+    out: dict[int, int | None] = {}
+    upto = -1
+    if gps is not None:
+        out = {int(s): int(a) for s, a in zip(gps["stop_sequence"], gps["passed_at"], strict=True)}
+        upto = int(gps["pos"].max())
+    if feed_pos is not None:
+        upto = max(upto, int(feed_pos) - 1)
+    if seqs is not None:
+        for pos, seq in seqs.items():
+            if int(pos) <= upto:
+                out.setdefault(int(seq), None)
+    return dict(sorted(out.items()))
