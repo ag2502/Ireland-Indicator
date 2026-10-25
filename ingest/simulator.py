@@ -268,7 +268,9 @@ class Simulator:
                 if row.stop_sequence in set(skip["stop_sequence"]):
                     later = g[(g["stop_sequence"] > row.stop_sequence) & ~g["skipped"]]
                     row = later.iloc[0] if len(later) else row
-                updates = [(int(r.stop_sequence), r.stop_id, None) for r in skip.itertuples()]
+                updates: list[tuple[int, str, int | None]] = [
+                    (int(r.stop_sequence), str(r.stop_id), None) for r in skip.itertuples()
+                ]
                 updates.append((int(row.stop_sequence), row.stop_id, delay))
                 for seq, stop_id, d in sorted(set(updates), key=lambda u: u[0]):
                     stu = tu.stop_time_update.add()
