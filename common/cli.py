@@ -18,6 +18,9 @@ COMMANDS: dict[str, tuple[str, str, str]] = {
     "poll": ("ingest.poller", "run", "poll the realtime feeds (NTA or simulated) every 60 s"),
     "weather": ("ingest.weather", "run", "fetch hourly Dublin weather from Open-Meteo"),
     "build-labels": ("pipeline.arrivals", "run", "reconstruct arrivals and no-show outcomes per day"),
+    "scores": ("pipeline.scores", "run", "route scores, heatmap and slow segments"),
+    "checks": ("pipeline.checks", "run", "daily data-quality checks (exit 1 on failure)"),
+    "stopwatch": ("pipeline.stopwatch", "run", "compare hand-timed arrivals with reconstructed labels"),
     "simulate-backfill": ("ingest.simulator", "run_backfill", "replay simulated history into the DB"),
 }
 
