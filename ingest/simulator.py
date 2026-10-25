@@ -56,6 +56,7 @@ class DayWorld:
     service_date: str
     stops: pd.DataFrame  # one row per (trip, stop) with true_at, sched_at, dist_m
     trips: pd.DataFrame  # one row per trip: ghost, cancel_at, has_gps, vehicle_id, start delay
+    rainy: bool = False
     by_trip: dict[str, pd.DataFrame] = field(default_factory=dict)
 
 
@@ -163,7 +164,7 @@ class Simulator:
         # arrivals must be non-decreasing along a trip
         true_at = pd.Series(true_at).groupby(trip_idx).cummax().to_numpy()
         stops = st.assign(true_at=true_at.round(), true_delay=(true_at - st["scheduled_at"]).round())
-        world = DayWorld(service_date, stops, trips)
+        world = DayWorld(service_date, stops, trips, rainy=rainy)
         world.by_trip = {t: g for t, g in stops.groupby("trip_id", sort=False)}
         self._days[service_date] = world
         if len(self._days) > 3:

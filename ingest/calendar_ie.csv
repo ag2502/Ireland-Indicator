@@ -1,0 +1,26 @@
+start_date,end_date,kind,name
+2026-01-01,2026-01-01,bank_holiday,New Year's Day
+2026-02-02,2026-02-02,bank_holiday,St Brigid's Day
+2026-03-17,2026-03-17,bank_holiday,St Patrick's Day
+2026-04-06,2026-04-06,bank_holiday,Easter Monday
+2026-05-04,2026-05-04,bank_holiday,May bank holiday
+2026-06-01,2026-06-01,bank_holiday,June bank holiday
+2026-08-03,2026-08-03,bank_holiday,August bank holiday
+2026-10-26,2026-10-26,bank_holiday,October bank holiday
+2026-12-25,2026-12-25,bank_holiday,Christmas Day
+2026-12-26,2026-12-26,bank_holiday,St Stephen's Day
+2027-01-01,2027-01-01,bank_holiday,New Year's Day
+2027-02-01,2027-02-01,bank_holiday,St Brigid's Day
+2027-03-17,2027-03-17,bank_holiday,St Patrick's Day
+2027-03-29,2027-03-29,bank_holiday,Easter Monday
+2027-05-03,2027-05-03,bank_holiday,May bank holiday
+2027-06-07,2027-06-07,bank_holiday,June bank holiday
+2027-08-02,2027-08-02,bank_holiday,August bank holiday
+2027-10-25,2027-10-25,bank_holiday,October bank holiday
+2027-12-27,2027-12-27,bank_holiday,Christmas Day (substitute)
+2027-12-28,2027-12-28,bank_holiday,St Stephen's Day (substitute)
+2026-10-26,2026-10-30,school_holiday,Mid-term break
+2026-12-23,2027-01-05,school_holiday,Christmas holidays
+2027-02-15,2027-02-19,school_holiday,February mid-term
+2027-03-22,2027-04-02,school_holiday,Easter holidays
+2027-06-26,2027-08-31,school_holiday,Summer holidays (primary; secondary ends late May)
