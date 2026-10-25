@@ -1,0 +1,62 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  python:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.12.9"
+          python-version: "3.12"
+          enable-cache: true
+      - run: uv sync --frozen
+      - run: uv run --frozen ruff check .
+      - run: uv run --frozen mypy common ingest pipeline ml api
+      - run: uv run --frozen pytest -q
+
+  web:
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm run build
+        env:
+          NEXT_TELEMETRY_DISABLED: 1
+
+  # Build both production images so a broken Dockerfile fails here, not on the server.
+  images:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - run: docker build -f infra/python.Dockerfile -t bustrust-python .
+      - run: docker build -t bustrust-web web
+      - name: Smoke test the Python image
+        run: |
+          docker run --rm bustrust-python bustrust --help
+          docker run --rm bustrust-python python -c "import lightgbm, api.main"
+          docker run --rm bustrust-python supercronic -test /etc/bustrust.crontab
+      - name: Validate the compose file
+        run: POSTGRES_PASSWORD=ci docker compose -f infra/docker-compose.yml config --quiet

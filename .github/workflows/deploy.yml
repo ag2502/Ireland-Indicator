@@ -1,0 +1,51 @@
+# Deploys main to the VM after CI passes. Does nothing until these repo secrets exist:
+#   DEPLOY_HOST, DEPLOY_USER, DEPLOY_KEY (private SSH key), DEPLOY_KNOWN_HOSTS
+#   (the output of `ssh-keyscan <host>`, checked by hand once), and optionally DEPLOY_PATH.
+# The server holds a clone of this repo and its own .env; see docs/runbook.md.
+name: Deploy
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency: deploy
+
+jobs:
+  deploy:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-24.04
+    env:
+      DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+    steps:
+      - name: Skip when no server is configured
+        if: env.DEPLOY_HOST == ''
+        run: echo "::notice::DEPLOY_HOST is not set, so there is nothing to deploy to."
+
+      - name: Deploy over SSH
+        if: env.DEPLOY_HOST != ''
+        env:
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_KEY: ${{ secrets.DEPLOY_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH || '/opt/bustrust' }}
+          SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$DEPLOY_KEY" > ~/.ssh/deploy && chmod 600 ~/.ssh/deploy
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          ssh -i ~/.ssh/deploy "$DEPLOY_USER@$DEPLOY_HOST" bash -s <<EOF
+          set -euo pipefail
+          cd '$DEPLOY_PATH'
+          git fetch -q origin
+          git checkout -q --detach '$SHA'
+          docker compose --env-file .env -f infra/docker-compose.yml up -d --build --remove-orphans
+          docker image prune -f >/dev/null
+          sleep 20
+          echo "healthz: \$(docker compose --env-file .env -f infra/docker-compose.yml exec -T api curl -s -o /dev/null -w '%{http_code}' localhost:8000/healthz)"
+          EOF

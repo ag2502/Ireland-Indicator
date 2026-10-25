@@ -1,0 +1,64 @@
+# Every Monday, after the server's cron retrain (06:30 Dublin), copy the new evaluation
+# report into docs/evaluation.json and commit it, so the repo shows how the models did.
+# Run it by hand with "retrain" ticked to train first. Needs the same secrets as deploy.
+name: Weekly model report
+
+on:
+  schedule:
+    - cron: "0 9 * * 1"
+  workflow_dispatch:
+    inputs:
+      retrain:
+        description: Retrain on the server before fetching the report
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+concurrency: weekly-report
+
+jobs:
+  report:
+    runs-on: ubuntu-24.04
+    env:
+      DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+    steps:
+      - name: Skip when no server is configured
+        if: env.DEPLOY_HOST == ''
+        run: echo "::notice::DEPLOY_HOST is not set, so there is no report to fetch."
+
+      - uses: actions/checkout@v5
+        if: env.DEPLOY_HOST != ''
+
+      - name: Fetch the report
+        if: env.DEPLOY_HOST != ''
+        env:
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_KEY: ${{ secrets.DEPLOY_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH || '/opt/bustrust' }}
+          RETRAIN: ${{ inputs.retrain && 'yes' || '' }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$DEPLOY_KEY" > ~/.ssh/deploy && chmod 600 ~/.ssh/deploy
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          compose="docker compose --env-file .env -f infra/docker-compose.yml"
+          if [ -n "$RETRAIN" ]; then
+            ssh -i ~/.ssh/deploy "$DEPLOY_USER@$DEPLOY_HOST" \
+              "cd '$DEPLOY_PATH' && $compose exec -T jobs bustrust train --report /data/reports/evaluation.json"
+          fi
+          ssh -i ~/.ssh/deploy "$DEPLOY_USER@$DEPLOY_HOST" \
+            "cd '$DEPLOY_PATH' && $compose exec -T jobs cat /data/reports/evaluation.json" > docs/evaluation.json
+          python3 -m json.tool docs/evaluation.json > /dev/null
+
+      - name: Commit it if it changed
+        if: env.DEPLOY_HOST != ''
+        run: |
+          git diff --quiet -- docs/evaluation.json && { echo "No change."; exit 0; }
+          git config user.name "Amogh Gaikwad"
+          git config user.email "amogh.g2003@gmail.com"
+          git add docs/evaluation.json
+          git commit -q -m "$(TZ=Europe/Dublin date '+%Y-%m-%d %H:%M') - Weekly model report" \
+            -m "Evaluation of this week's retrain, copied from the server."
+          git push -q
