@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>BusTrust: offline</title>
+<style>
+  :root {
+    --sign: #00553f;
+    --temp: #f39200;
+    --ground: #e7ebe9;
+    --paper: #ffffff;
+    --ink: #000000;
+    --muted: #47524d;
+    --on-sign: #ffffff;
+    --focus: #0a58ca;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --ground: #05261c;
+      --paper: #0b3427;
+      --ink: #ffffff;
+      --muted: #b5c7bf;
+      --focus: #8cc8ff;
+      color-scheme: dark;
+    }
+  }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    display: grid;
+    place-items: center;
+    padding: env(safe-area-inset-top) 16px env(safe-area-inset-bottom);
+    background: var(--ground);
+    color: var(--ink);
+    font: 17px/1.45 system-ui, sans-serif;
+  }
+  main {
+    max-width: 22rem;
+    background: var(--paper);
+    border-left: 6px solid var(--temp);
+    border-radius: 8px;
+    padding: 20px;
+  }
+  h1 { margin: 0 0 8px; font-size: 1.3rem; }
+  p { margin: 0 0 16px; color: var(--muted); }
+  button {
+    font: inherit;
+    font-weight: 600;
+    min-height: 48px;
+    width: 100%;
+    border: 0;
+    border-radius: 8px;
+    background: var(--sign);
+    color: var(--on-sign);
+  }
+  button:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>No connection</h1>
+  <p>BusTrust needs the internet for live times. Check your signal or Wi-Fi, then try again.</p>
+  <button type="button" id="retry">Try again</button>
+</main>
+<script>
+  // capacitor.config.ts fills in the address when it copies this page to www/.
+  document.getElementById("retry").addEventListener("click", function () {
+    location.replace("__BUSTRUST_APP_URL__");
+  });
+</script>
+</body>
+</html>
