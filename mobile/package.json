@@ -5,7 +5,8 @@
   "scripts": {
     "sync": "cap sync",
     "android": "cap open android",
-    "ios": "cap open ios"
+    "ios": "cap open ios",
+    "icons": "node scripts/icons.mjs"
   },
   "dependencies": {
     "@capacitor/android": "8.5.3",
@@ -14,6 +15,7 @@
   },
   "devDependencies": {
     "@capacitor/cli": "8.5.3",
+    "sharp": "0.35.5",
     "typescript": "5.9.3"
   }
 }
