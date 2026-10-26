@@ -54,6 +54,69 @@ Variables) named `DEPLOY_ENABLED` with the value `true`. From then on, every pus
 `docs/evaluation.json` each Monday. Until that variable is set, both workflows show as
 skipped.
 
+## Mobile apps
+
+The Android and iOS apps in `mobile/` load the live site, so the site must be deployed
+on `https://` first. After that, web deploys reach the apps without a store release.
+Build the apps again only when `mobile/` changes. All commands run in `mobile/` on a Mac.
+
+```bash
+npm ci
+BUSTRUST_APP_URL=https://<domain> npx cap sync
+```
+
+### Google Play (one-off fee: $25)
+
+1. **Upload key, once.** Keep the `.jks` file and its password somewhere safe outside
+   the repo, such as a password manager:
+   ```bash
+   keytool -genkeypair -keystore ~/bustrust-upload.jks -alias upload -keyalg RSA -keysize 2048 -validity 10000
+   ```
+   Then create `android/keystore.properties` (gitignored):
+   ```
+   storeFile=/Users/<you>/bustrust-upload.jks
+   storePassword=…
+   keyAlias=upload
+   keyPassword=…
+   ```
+2. **Build.** Raise `versionCode` (by 1) and `versionName` in `android/app/build.gradle`,
+   then run `cd android && ./gradlew bundleRelease`. The upload file is
+   `android/app/build/outputs/bundle/release/app-release.aab`. The build needs
+   JDK 21; Android Studio includes one.
+3. **Play Console.** Create the app and turn on Play App Signing, which lets Google reset
+   a lost upload key. Fill in the store listing, the content rating, and the data safety
+   form: the app collects nothing, and location stays on the device. Link a privacy
+   policy URL. New personal accounts must run a closed test with at least 12 testers for
+   14 days before production.
+
+A signed `app-release.apk` (`./gradlew assembleRelease`) can also be shared directly,
+for example on a GitHub release. Android users then have to allow installs from
+unknown sources.
+
+### Apple App Store (fee: $99 a year)
+
+1. Install Xcode from the Mac App Store and enrol in the Apple Developer Program.
+2. Run `npx cap open ios`. In Signing & Capabilities, choose your team. Raise the version
+   and build number, then run Product → Archive and upload from the Organizer.
+3. In App Store Connect, add the listing, screenshots, the privacy label (no data
+   collected) and the privacy policy URL, then submit for review.
+
+Apple rejects apps that are "just a website" (guideline 4.2). When you submit, point to
+what works like an app: offline arrivals from the last good response, location-based
+nearby stops, and saved stops. Adding push alerts for saved stops would make approval
+more likely.
+
+### Testing on the Android emulator
+
+```bash
+adb reverse tcp:3000 tcp:3000          # the emulator's localhost reaches `npm run dev`
+BUSTRUST_APP_URL=http://localhost:3000 npx cap sync android
+cd android && ./gradlew installDebug
+```
+
+Use `localhost`, not `10.0.2.2`: location only works on a secure origin, and
+`localhost` counts as one.
+
 ## Switching to the real NTA feed
 
 1. Register at the NTA developer portal and subscribe to GTFS-Realtime. You get a primary

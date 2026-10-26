@@ -59,6 +59,7 @@ pipeline/   arrival reconstruction, route scores, features, data checks
 ml/         training, evaluation, conformal calibration, live scoring and status
 api/        FastAPI service (read-only)
 web/        Next.js PWA
+mobile/     Android and iOS apps (Capacitor shells around the deployed site)
 infra/      Dockerfile, docker-compose.yml, Caddyfile, crontab
 tests/      unit and data-quality tests
 docs/       architecture, data dictionary, model card, runbook, evaluation report
@@ -96,6 +97,10 @@ docker compose --env-file .env -f infra/docker-compose.yml up -d --build
 
 GitHub Actions runs CI on every push and deploys `main` once CI passes. See the
 [runbook](docs/runbook.md) for server setup and the secrets the deploy needs.
+
+The Android and iOS apps in `mobile/` load the deployed site, so web deploys reach them
+without a store release. The runbook's "Mobile apps" section covers building, signing
+and publishing them to Google Play and the App Store.
 
 ## Data and licence
 
