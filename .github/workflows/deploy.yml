@@ -1,4 +1,5 @@
-# Deploys main to the VM after CI passes. Does nothing until these repo secrets exist:
+# Deploys main to the VM after CI passes. Off until the repository variable
+# DEPLOY_ENABLED is "true"; until then every run shows as skipped. Needs these secrets:
 #   DEPLOY_HOST, DEPLOY_USER, DEPLOY_KEY (private SSH key), DEPLOY_KNOWN_HOSTS
 #   (the output of `ssh-keyscan <host>`, checked by hand once), and optionally DEPLOY_PATH.
 # The server holds a clone of this repo and its own .env; see docs/runbook.md.
@@ -18,18 +19,14 @@ concurrency: deploy
 
 jobs:
   deploy:
-    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    if: >-
+      vars.DEPLOY_ENABLED == 'true' &&
+      (github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success')
     runs-on: ubuntu-24.04
-    env:
-      DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
     steps:
-      - name: Skip when no server is configured
-        if: env.DEPLOY_HOST == ''
-        run: echo "::notice::DEPLOY_HOST is not set, so there is nothing to deploy to."
-
       - name: Deploy over SSH
-        if: env.DEPLOY_HOST != ''
         env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
           DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
           DEPLOY_KEY: ${{ secrets.DEPLOY_KEY }}
           DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}

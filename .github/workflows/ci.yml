@@ -8,9 +8,10 @@ on:
 permissions:
   contents: read
 
+# every commit on main gets a full run; only superseded pull request runs are cancelled
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   python:

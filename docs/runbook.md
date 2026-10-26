@@ -48,9 +48,11 @@ that can write to `/opt/bustrust`), `DEPLOY_KEY` (a private SSH key for that use
 `ssh-keyscan <host>`, compared by hand against the server's own key. Set `DEPLOY_PATH`
 only if the clone is somewhere other than `/opt/bustrust`.
 
-After that, every push to `main` that passes CI is deployed. The weekly report workflow
-starts committing `docs/evaluation.json` each Monday. Until the secrets exist, both
-workflows skip without failing.
+Then add a repository **variable** (Settings → Secrets and variables → Actions →
+Variables) named `DEPLOY_ENABLED` with the value `true`. From then on, every push to
+`main` that passes CI is deployed, and the weekly report workflow commits
+`docs/evaluation.json` each Monday. Until that variable is set, both workflows show as
+skipped.
 
 ## Switching to the real NTA feed
 

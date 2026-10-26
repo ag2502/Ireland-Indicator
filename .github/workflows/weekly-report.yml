@@ -1,6 +1,7 @@
 # Every Monday, after the server's cron retrain (06:30 Dublin), copy the new evaluation
 # report into docs/evaluation.json and commit it, so the repo shows how the models did.
-# Run it by hand with "retrain" ticked to train first. Needs the same secrets as deploy.
+# Run it by hand with "retrain" ticked to train first. Off until the repository variable
+# DEPLOY_ENABLED is "true"; needs the same secrets as deploy.
 name: Weekly model report
 
 on:
@@ -20,20 +21,14 @@ concurrency: weekly-report
 
 jobs:
   report:
+    if: vars.DEPLOY_ENABLED == 'true'
     runs-on: ubuntu-24.04
-    env:
-      DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
     steps:
-      - name: Skip when no server is configured
-        if: env.DEPLOY_HOST == ''
-        run: echo "::notice::DEPLOY_HOST is not set, so there is no report to fetch."
-
       - uses: actions/checkout@v5
-        if: env.DEPLOY_HOST != ''
 
       - name: Fetch the report
-        if: env.DEPLOY_HOST != ''
         env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
           DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
           DEPLOY_KEY: ${{ secrets.DEPLOY_KEY }}
           DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
@@ -53,7 +48,6 @@ jobs:
           python3 -m json.tool docs/evaluation.json > /dev/null
 
       - name: Commit it if it changed
-        if: env.DEPLOY_HOST != ''
         run: |
           git diff --quiet -- docs/evaluation.json && { echo "No change."; exit 0; }
           git config user.name "Amogh Gaikwad"
